@@ -329,6 +329,38 @@ function showImageModal(src) {
 
 document.getElementById('btnRefreshResult').addEventListener('click', loadResultPreview);
 
+// ===== Auto Update =====
+window.api.update.onAvailable((data) => {
+    const banner = document.getElementById('updateBanner');
+    const message = document.getElementById('updateMessage');
+    const progressBar = document.getElementById('updateProgressBar');
+
+    banner.style.display = 'block';
+    message.textContent = `새 버전 v${data.version} 다운로드 중...`;
+    progressBar.style.display = 'block';
+});
+
+window.api.update.onProgress((data) => {
+    const fill = document.getElementById('updateProgressFill');
+    fill.style.width = `${data.percent}%`;
+    const message = document.getElementById('updateMessage');
+    message.textContent = `새 버전 다운로드 중... ${data.percent}%`;
+});
+
+window.api.update.onDownloaded((data) => {
+    const message = document.getElementById('updateMessage');
+    const progressBar = document.getElementById('updateProgressBar');
+    const installBtn = document.getElementById('btnUpdateInstall');
+
+    message.textContent = `v${data.version} 다운로드 완료!`;
+    progressBar.style.display = 'none';
+    installBtn.style.display = 'inline-flex';
+});
+
+document.getElementById('btnUpdateInstall').addEventListener('click', () => {
+    window.api.update.install();
+});
+
 // ===== Init =====
 loadDashboard();
 // 페이지 로드 시 기존 result.json이 있으면 미리보기 표시

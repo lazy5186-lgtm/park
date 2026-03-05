@@ -1,10 +1,11 @@
 {
-  "name": "park_sample",
+  "name": "park-sample",
   "version": "1.0.0",
   "description": "블로그 자동화 데스크톱 앱",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
+    "build": "electron-builder --win",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -16,11 +17,57 @@
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.13.6",
     "dotenv": "^17.3.1",
+    "electron-updater": "^6.3.9",
     "fluent-ffmpeg": "^2.1.3",
     "puppeteer": "^24.38.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
-    "electron": "^35.7.5"
+    "electron": "^35.7.5",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.parksample.blog-automation",
+    "productName": "PARK SAMPLE",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "imgs/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "imgs/icon.ico",
+      "uninstallerIcon": "imgs/icon.ico",
+      "createDesktopShortcut": true,
+      "shortcutName": "PARK SAMPLE"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "YOUR_GITHUB_USERNAME",
+      "repo": "PARK_SAMPLE"
+    },
+    "files": [
+      "electron/**/*",
+      "lib/**/*",
+      "prompt/**/*",
+      "3.post.js",
+      "generate_article.js",
+      "config.json",
+      "setting.txt",
+      "used_keywords.json",
+      "imgs/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/puppeteer",
+        "to": "puppeteer",
+        "filter": ["**/*"]
+      }
+    ],
+    "asar": false
   }
 }

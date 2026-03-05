@@ -110,6 +110,71 @@ body {
     50% { opacity: 0.4; }
 }
 
+/* ===== Update Banner ===== */
+.update-banner {
+    background: linear-gradient(135deg, #38a169, #2f855a);
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(56, 161, 105, 0.3);
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.update-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.update-banner-content .material-symbols-outlined {
+    font-size: 22px;
+}
+
+#updateMessage {
+    font-size: 13px;
+    font-weight: 500;
+    flex: 1;
+}
+
+.update-progress-bar {
+    width: 120px;
+    height: 6px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.update-progress-fill {
+    height: 100%;
+    background: #fff;
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.update-install-btn {
+    background: #fff !important;
+    color: #2f855a !important;
+    font-weight: 600 !important;
+    border: none;
+    cursor: pointer;
+    padding: 6px 14px !important;
+    border-radius: 4px;
+    font-size: 12px !important;
+    transition: opacity 0.15s;
+}
+
+.update-install-btn:hover {
+    opacity: 0.9;
+}
+
 /* ===== Main Content ===== */
 #content {
     flex: 1;

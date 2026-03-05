@@ -43,7 +43,7 @@ async function createBottomOverlay(width) {
 }
 
 // Gemini API Key
-const API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyAPHUs5zDSIjkEKOEjCaBqVf1gnlnB9TB0';
+const API_KEY = process.env.GEMINI_API_KEY || '';
 // Prompt file path
 const PROMPT_FILE_PATH = path.join(__dirname, 'prompt', 'prompt', 'info_Prompt.md');
 

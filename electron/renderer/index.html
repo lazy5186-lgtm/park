@@ -48,6 +48,20 @@
 
     <!-- Main Content -->
     <main id="content">
+        <!-- Update Banner -->
+        <div id="updateBanner" class="update-banner" style="display:none;">
+            <div class="update-banner-content">
+                <span class="material-symbols-outlined">system_update</span>
+                <span id="updateMessage">새 버전을 확인하는 중...</span>
+                <div class="update-progress-bar" id="updateProgressBar" style="display:none;">
+                    <div class="update-progress-fill" id="updateProgressFill"></div>
+                </div>
+                <button class="btn btn-sm update-install-btn" id="btnUpdateInstall" style="display:none;">
+                    지금 재시작하여 업데이트
+                </button>
+            </div>
+        </div>
+
         <!-- Dashboard Page -->
         <section id="page-dashboard" class="page active">
             <h1>대시보드</h1>

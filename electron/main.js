@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 const { loadConfig, saveConfig, loadKeywords, resetKeywords, loadHistory } = require('./config-manager');
 const { runScript, stopProcess, isRunning } = require('./process-runner');
 
@@ -24,7 +25,33 @@ function createWindow() {
     mainWindow.setMenuBarVisibility(false);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    createWindow();
+
+    // 자동 업데이트 체크
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', (info) => {
+        console.log('업데이트 발견:', info.version);
+        mainWindow?.webContents.send('update:available', { version: info.version });
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+        mainWindow?.webContents.send('update:progress', { percent: Math.round(progress.percent) });
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+        console.log('업데이트 다운로드 완료:', info.version);
+        mainWindow?.webContents.send('update:downloaded', { version: info.version });
+    });
+
+    autoUpdater.on('error', (err) => {
+        console.log('업데이트 체크 오류:', err.message);
+    });
+
+    autoUpdater.checkForUpdatesAndNotify();
+});
 
 app.on('window-all-closed', () => {
     stopProcess();
@@ -32,6 +59,10 @@ app.on('window-all-closed', () => {
 });
 
 // ---- IPC Handlers ----
+
+ipcMain.handle('update:install', () => {
+    autoUpdater.quitAndInstall();
+});
 
 ipcMain.handle('config:load', () => {
     return loadConfig();

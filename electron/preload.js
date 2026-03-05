@@ -30,5 +30,23 @@ contextBridge.exposeInMainWorld('api', {
     },
     result: {
         load: () => ipcRenderer.invoke('result:load')
+    },
+    update: {
+        onAvailable: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('update:available', handler);
+            return () => ipcRenderer.removeListener('update:available', handler);
+        },
+        onProgress: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('update:progress', handler);
+            return () => ipcRenderer.removeListener('update:progress', handler);
+        },
+        onDownloaded: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('update:downloaded', handler);
+            return () => ipcRenderer.removeListener('update:downloaded', handler);
+        },
+        install: () => ipcRenderer.invoke('update:install')
     }
 });
