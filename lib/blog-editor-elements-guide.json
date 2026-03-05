@@ -1,0 +1,946 @@
+{
+  "editorElements": {
+    "사진": {
+      "selector": ".se-image-toolbar-button",
+      "dataName": "image",
+      "dataLog": "dot.img",
+      "description": "사진 추가",
+      "children": {
+        "fileDialog": {
+          "type": "file_upload",
+          "method": "waitForFileChooser",
+          "acceptedFormats": [".jpg", ".jpeg", ".png", ".gif", ".bmp"],
+          "description": "파일 선택 다이얼로그",
+          "implementation": {
+            "requiresPageContext": true,
+            "frameContext": false,
+            "code": "const [fileChooser] = await Promise.all([page.waitForFileChooser(), frame.click('.se-image-toolbar-button')]); await fileChooser.accept([imagePath]);"
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "uploadImage",
+        "modulePath": "./modules/image-module",
+        "fileName": "image-module.js",
+        "usage": "await uploadImage(page, frame, imagePath);",
+        "description": "사진 업로드 프로세스를 처리하는 모듈 함수",
+        "codeSnippet": "// waitForFileChooser를 사용하여 파일 다이얼로그를 띄우지 않고 직접 업로드\nconst [fileChooser] = await Promise.all([\n  page.waitForFileChooser(),\n  frame.click('.se-image-toolbar-button')\n]);\nawait fileChooser.accept([imagePath]);"
+      }
+    },
+    "동영상": {
+      "selector": ".se-video-toolbar-button",
+      "dataName": "video",
+      "dataLog": "dot.video",
+      "description": "동영상 추가",
+      "children": {
+        "uploadDialog": {
+          "type": "modal",
+          "selector": ".nvu_modal",
+          "tabs": {
+            "일반동영상": {
+              "selector": ".se-tab-일반동영상",
+              "description": "일반 동영상 업로드"
+            },
+            "360VR동영상": {
+              "selector": ".se-tab-360VR동영상",
+              "description": "360VR 동영상 업로드"
+            }
+          },
+          "uploadProcess": {
+            "step1": {
+              "action": "click",
+              "selector": ".se-video-toolbar-button",
+              "description": "동영상 버튼 클릭"
+            },
+            "step2": {
+              "action": "wait",
+              "selector": ".nvu_modal",
+              "description": "모달창이 열릴 때까지 대기"
+            },
+            "step3": {
+              "action": "click",
+              "selector": ".nvu_btn_video_pc",
+              "description": "동영상 추가 버튼 클릭"
+            },
+            "step4": {
+              "action": "waitForFileChooser",
+              "description": "파일 선택 다이얼로그 처리"
+            },
+            "step5": {
+              "action": "fillMetadata",
+              "selectors": {
+                "title": "#nvu_inp_box_title",
+                "description": "#nvu_inp_box_description"
+              },
+              "description": "제목과 설명 입력"
+            },
+            "step6": {
+              "action": "click",
+              "selector": ".nvu_btn_submit.nvu_btn_type2",
+              "description": "완료 버튼 클릭"
+            }
+          },
+          "uploadMethods": {
+            "fileUpload": {
+              "type": "file_upload",
+              "method": "waitForFileChooser",
+              "selector": ".nvu_btn_video_pc",
+              "description": "PC에서 동영상 선택",
+              "acceptedFormats": [".mp4", ".avi", ".mov", ".wmv"],
+              "maxSize": "15GB"
+            },
+            "mybox": {
+              "type": "cloud_storage",
+              "selector": ".se-mybox-button",
+              "description": "네이버 MYBOX에서 선택"
+            }
+          },
+          "metadata": {
+            "title": {
+              "selector": "#nvu_inp_box_title",
+              "type": "input",
+              "required": true,
+              "maxLength": 40,
+              "placeholder": "제목을 입력하세요. (최대 40자, 필수)"
+            },
+            "description": {
+              "selector": "#nvu_inp_box_description",
+              "type": "textarea",
+              "required": false,
+              "maxLength": 300,
+              "placeholder": "정보를 입력해주세요. (최대 300자)"
+            },
+            "tags": {
+              "selector": ".nvu_btn_add_tag",
+              "type": "tag_input",
+              "maxTags": 10,
+              "description": "태그 편집"
+            },
+            "aiUsage": {
+              "selector": ".nvu_ai_toggle_button",
+              "type": "toggle",
+              "description": "AI 활용 표시 설정"
+            },
+            "thumbnail": {
+              "selector": ".nvu_btn_rep",
+              "type": "thumbnail_selector",
+              "description": "대표 이미지 선택"
+            },
+            "completeButton": {
+              "selector": ".nvu_btn_submit.nvu_btn_type2",
+              "type": "button",
+              "text": "완료"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "uploadVideo",
+        "modulePath": "./modules/video-module",
+        "fileName": "video-module.js",
+        "usage": "await uploadVideo(page, frame, videoPath);",
+        "description": "동영상 업로드 전체 프로세스를 처리하는 모듈 함수",
+        "codeSnippet": "// 동영상 버튼 클릭 → 모달 대기 → 동영상 추가 버튼 클릭 → 파일 선택 → 메타데이터 입력 → 완료\nawait frame.click('.se-video-toolbar-button');\nawait page.waitForSelector('.nvu_modal');\nawait page.click('.nvu_btn_video_pc');\nconst [fileChooser] = await Promise.all([\n  page.waitForFileChooser(),\n  page.click('.nvu_btn_video_pc')\n]);\nawait fileChooser.accept([videoPath]);\n// 메타데이터 입력 후 완료 버튼 클릭"
+      }
+    },
+    "스티커": {
+      "selector": ".se-sticker-toolbar-button",
+      "dataName": "sticker",
+      "dataLog": "dot.sticker",
+      "description": "스티커 추가",
+      "children": {
+        "stickerPanel": {
+          "type": "sidebar",
+          "selector": ".se-sidebar-container-sticker",
+          "structure": {
+            "header": {
+              "selector": ".se-panel-header",
+              "title": "스티커"
+            },
+            "tabNavigation": {
+              "prevButton": ".se-panel-tab-prev-button",
+              "nextButton": ".se-panel-tab-next-button",
+              "tabList": ".se-panel-tab-list"
+            },
+            "tabs": {
+              "selector": ".se-tab-item button",
+              "totalCount": 10,
+              "validCount": 8,
+              "excludedTabs": ["설정", "OGQ마켓"],
+              "types": {
+                "history": {
+                  "selector": ".se-tab-button-history",
+                  "description": "최근 사용한 스티커",
+                  "index": 0
+                },
+                "gif": {
+                  "selector": ".se-tab-button-gif",
+                  "description": "움직이는 GIF 스티커 탭"
+                },
+                "normal": {
+                  "selector": ".se-tab-button:not(.se-tab-button-history):not(.se-tab-button-gif)",
+                  "description": "일반 스티커 탭"
+                }
+              }
+            },
+            "stickerList": {
+              "container": ".se-sidebar-list",
+              "activeContainer": ".se-sidebar-list.se-is-on",
+              "items": {
+                "gif": {
+                  "selector": ".se-sidebar-element-sticker-gif",
+                  "description": "움직이는 GIF 스티커"
+                },
+                "normal": {
+                  "selector": ".se-sidebar-element-sticker",
+                  "description": "일반 스티커"
+                }
+              }
+            }
+          },
+          "process": {
+            "step1": {
+              "action": "click",
+              "selector": ".se-sticker-toolbar-button",
+              "description": "스티커 버튼 클릭하여 패널 열기"
+            },
+            "step2": {
+              "action": "wait",
+              "selector": ".se-sidebar-container-sticker",
+              "description": "스티커 패널이 열릴 때까지 대기"
+            },
+            "step3": {
+              "action": "findTabs",
+              "context": "iframe",
+              "selector": ".se-tab-item button",
+              "description": "iframe 내에서 탭 버튼들 찾기"
+            },
+            "step4": {
+              "action": "selectRandomTab",
+              "exclude": 2,
+              "description": "마지막 2개 탭(설정, 마켓) 제외하고 랜덤 선택"
+            },
+            "step5": {
+              "action": "waitForActiveList",
+              "selector": ".se-sidebar-list.se-is-on",
+              "description": "선택된 탭의 스티커 목록이 활성화될 때까지 대기"
+            },
+            "step6": {
+              "action": "findStickers",
+              "context": "activeList",
+              "selectors": [".se-sidebar-element-sticker-gif", ".se-sidebar-element-sticker"],
+              "description": "활성화된 목록에서 스티커 찾기"
+            },
+            "step7": {
+              "action": "selectRandomSticker",
+              "description": "찾은 스티커 중 랜덤으로 하나 선택하여 클릭"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "addSticker",
+        "modulePath": "./modules/sticker-module",
+        "fileName": "sticker-module.js",
+        "usage": "await addSticker(page, frame);",
+        "description": "랜덤 탭 선택 후 랜덤 스티커를 선택하여 추가하는 모듈 함수",
+        "codeSnippet": "// 스티커 버튼 클릭 → 탭 찾기 → 랜덤 탭 선택 → 스티커 목록 로드 대기 → 활성화된 목록에서 스티커 찾기 → 랜덤 스티커 클릭\nawait frame.click('.se-sticker-toolbar-button');\nconst tabButtons = await frame.$$('.se-tab-item button');\nconst randomTabIndex = Math.floor(Math.random() * (tabButtons.length - 2));\nawait tabButtons[randomTabIndex].click();\nawait frame.waitForSelector('.se-sidebar-list.se-is-on');\nconst activeList = await frame.$('.se-sidebar-list.se-is-on');\nconst stickerItems = await activeList.$$('.se-sidebar-element-sticker-gif');\nconst randomSticker = Math.floor(Math.random() * stickerItems.length);\nawait stickerItems[randomSticker].click();"
+      }
+    },
+    "인용구": {
+      "selector": ".se-insert-quotation-default-toolbar-button",
+      "dataName": "quotation",
+      "dataLog": "dot.quota",
+      "description": "인용구 추가",
+      "hasDropdown": true,
+      "dropdownSelector": ".se-document-toolbar-select-option-button[data-name='quotation']",
+      "children": {
+        "dropdownOptions": {
+          "type": "dropdown",
+          "selector": ".se-toolbar-option-quotation",
+          "options": {
+            "a": {
+              "selector": "button[data-value='default']",
+              "dataValue": "default",
+              "description": "인용구 1 (기본)"
+            },
+            "b": {
+              "selector": "button[data-value='simple']",
+              "dataValue": "simple",
+              "description": "인용구 2 (심플)"
+            },
+            "c": {
+              "selector": "button[data-value='line']",
+              "dataValue": "line",
+              "description": "인용구 3 (라인)"
+            },
+            "d": {
+              "selector": "button[data-value='solid']",
+              "dataValue": "solid",
+              "description": "인용구 4 (솔리드)"
+            },
+            "e": {
+              "selector": "button[data-value='box']",
+              "dataValue": "box",
+              "description": "인용구 5 (박스)"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "addQuotation",
+        "modulePath": "./modules/quotation-module",
+        "fileName": "quotation-module.js",
+        "usage": "await addQuotation(page, frame, quotationType);",
+        "description": "인용구 추가 모듈 함수",
+        "codeSnippet": "// 인용구 버튼 클릭 → 드롭다운 메뉴 열기 → 원하는 인용구 타입 선택\nawait frame.click('.se-insert-quotation-default-toolbar-button');\nawait frame.waitForSelector('.se-toolbar-option-quotation');\nconst quotationButton = await frame.$('button[data-value=\"line\"]'); // type 'c'에 해당\nawait quotationButton.click();"
+      }
+    },
+    "구분선": {
+      "selector": ".se-insert-horizontal-line-default-toolbar-button",
+      "dataName": "horizontal-line",
+      "dataLog": "dot.horizt",
+      "description": "구분선 추가",
+      "hasDropdown": true,
+      "dropdownSelector": ".se-document-toolbar-select-option-button[data-name='horizontal-line']",
+      "children": {
+        "dropdownOptions": {
+          "type": "dropdown",
+          "selector": ".se-toolbar-option-insert-horizontal-line",
+          "options": {
+            "a": {
+              "selector": ".se-toolbar-option-insert-horizontal-line-default-button",
+              "dataValue": "default",
+              "dataLog": "dot.horizt0",
+              "description": "구분선 1"
+            },
+            "b": {
+              "selector": ".se-toolbar-option-insert-horizontal-line-line1-button",
+              "dataValue": "line1",
+              "dataLog": "dot.horizt1",
+              "description": "구분선 2"
+            },
+            "c": {
+              "selector": ".se-toolbar-option-insert-horizontal-line-line2-button",
+              "dataValue": "line2",
+              "dataLog": "dot.horizt2",
+              "description": "구분선 3"
+            },
+            "d": {
+              "selector": ".se-toolbar-option-insert-horizontal-line-line3-button",
+              "dataValue": "line3",
+              "dataLog": "dot.horizt3",
+              "description": "구분선 4"
+            },
+            "e": {
+              "selector": ".se-toolbar-option-insert-horizontal-line-line4-button",
+              "dataValue": "line4",
+              "dataLog": "dot.horizt4",
+              "description": "구분선 5"
+            },
+            "f": {
+              "selector": ".se-toolbar-option-insert-horizontal-line-line5-button",
+              "dataValue": "line5",
+              "dataLog": "dot.horizt5",
+              "description": "구분선 6"
+            },
+            "g": {
+              "selector": ".se-toolbar-option-insert-horizontal-line-line6-button",
+              "dataValue": "line6",
+              "dataLog": "dot.horizt6",
+              "description": "구분선 7"
+            },
+            "h": {
+              "selector": ".se-toolbar-option-insert-horizontal-line-line7-button",
+              "dataValue": "line7",
+              "dataLog": "dot.horizt7",
+              "description": "구분선 8"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "addHorizontalLine",
+        "modulePath": "./modules/horizontal-line-module",
+        "fileName": "horizontal-line-module.js",
+        "usage": "await addHorizontalLine(page, frame, lineType);",
+        "description": "구분선 추가 모듈 함수",
+        "codeSnippet": "// 구분선 버튼 클릭 → 드롭다운 메뉴 열기 → 원하는 구분선 타입 선택\nawait frame.click('.se-insert-horizontal-line-default-toolbar-button');\nawait frame.waitForSelector('.se-toolbar-option-insert-horizontal-line');\nconst optionSelector = '.se-toolbar-option-insert-horizontal-line-line2-button'; // type 'c'에 해당\nawait frame.click(optionSelector);"
+      }
+    },
+    "장소": {
+      "selector": ".se-map-toolbar-button",
+      "dataName": "map",
+      "dataLog": "dot.map",
+      "description": "장소 추가",
+      "children": {}
+    },
+    "링크": {
+      "selector": ".se-oglink-toolbar-button",
+      "dataName": "oglink",
+      "dataLog": "dot.link",
+      "description": "링크 추가",
+      "children": {
+        "linkPopup": {
+          "type": "popup",
+          "selector": ".se-popup-container",
+          "elements": {
+            "urlInput": {
+              "selector": ".se-popup-oglink-input",
+              "type": "input",
+              "placeholder": "URL을 입력하세요."
+            },
+            "searchButton": {
+              "selector": ".se-popup-oglink-button",
+              "type": "button",
+              "dataLog": "pog.search",
+              "description": "검색"
+            },
+            "loading": {
+              "selector": ".se-popup-oglink-loading",
+              "type": "loading",
+              "description": "로딩중"
+            },
+            "preview": {
+              "selector": ".se-popup-oglink-preview",
+              "type": "preview",
+              "description": "링크 프리뷰"
+            },
+            "confirmButton": {
+              "selector": ".se-popup-button-confirm",
+              "type": "button",
+              "dataLog": "pog.ok",
+              "description": "확인"
+            },
+            "closeButton": {
+              "selector": ".se-popup-close-button",
+              "type": "button",
+              "dataLog": "pog.close",
+              "description": "팝업 닫기"
+            }
+          },
+          "process": {
+            "step1": {
+              "action": "click",
+              "selector": ".se-oglink-toolbar-button",
+              "description": "링크 버튼 클릭"
+            },
+            "step2": {
+              "action": "wait",
+              "selector": ".se-popup-container",
+              "description": "팝업이 열릴 때까지 대기"
+            },
+            "step3": {
+              "action": "input",
+              "selector": ".se-popup-oglink-input",
+              "description": "URL 입력"
+            },
+            "step4": {
+              "action": "click",
+              "selector": ".se-popup-oglink-button",
+              "description": "검색 버튼 클릭"
+            },
+            "step5": {
+              "action": "waitForEnable",
+              "selector": ".se-popup-button-confirm:not([disabled])",
+              "description": "확인 버튼 활성화 대기"
+            },
+            "step6": {
+              "action": "click",
+              "selector": ".se-popup-button-confirm",
+              "description": "확인 버튼 클릭"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "addOgLink",
+        "modulePath": "./modules/oglink-module",
+        "fileName": "oglink-module.js",
+        "usage": "await addOgLink(page, frame, url);",
+        "description": "링크 추가 모듈 함수",
+        "codeSnippet": "// 링크 버튼 클릭 → 팝업 열기 → URL 입력 → 검색 → 확인\nawait frame.click('.se-oglink-toolbar-button');\nawait page.waitForSelector('.se-popup-oglink-input');\nawait page.type('.se-popup-oglink-input', 'ttj.kr');\nawait page.click('.se-popup-oglink-button');\nawait page.waitForSelector('.se-popup-button-confirm:not([disabled])');\nawait page.click('.se-popup-button-confirm');"
+      }
+    },
+    "파일": {
+      "selector": ".se-file-toolbar-button",
+      "dataName": "file",
+      "dataLog": "dot.file",
+      "description": "파일 추가",
+      "children": {}
+    },
+    "일정": {
+      "selector": ".se-schedule-toolbar-button",
+      "dataName": "schedule",
+      "dataLog": "dot.schedule",
+      "description": "일정 추가",
+      "children": {}
+    },
+    "소스코드": {
+      "selector": ".se-code-toolbar-button",
+      "dataName": "code",
+      "dataLog": "dot.code",
+      "description": "소스코드 추가",
+      "children": {}
+    },
+    "표": {
+      "selector": ".se-table-toolbar-button",
+      "dataName": "table",
+      "dataLog": "dot.table",
+      "description": "표 추가",
+      "children": {}
+    },
+    "내돈내산": {
+      "selector": ".se-not-sponsored-button-toolbar-button",
+      "dataName": "not-sponsored-button",
+      "dataLog": "dot.proof",
+      "description": "내돈내산 상품 첨부",
+      "children": {}
+    },
+    "내클립": {
+      "selector": ".se-moment-toolbar-button",
+      "dataName": "moment",
+      "dataLog": "dot.moment",
+      "description": "내 클립 열기",
+      "children": {}
+    },
+    "글감": {
+      "selector": ".se-search-toolbar-button",
+      "dataName": "search",
+      "dataLog": "dot.search",
+      "description": "글감 검색 열기",
+      "children": {}
+    },
+    "라이브러리": {
+      "selector": ".se-library-toolbar-button",
+      "dataName": "library",
+      "dataLog": "dot.lib",
+      "description": "라이브러리 열기",
+      "children": {}
+    },
+    "템플릿": {
+      "selector": ".se-template-toolbar-button",
+      "dataName": "template",
+      "dataLog": "dot.template",
+      "description": "템플릿 열기",
+      "children": {}
+    }
+  },
+  "propertyToolbarElements": {
+    "텍스트서식": {
+      "selector": ".se-text-format-toolbar-button",
+      "dataName": "text-format",
+      "dataLog": "prt.fmt",
+      "description": "문단 서식 변경",
+      "hasDropdown": true,
+      "children": {
+        "dropdownOptions": {
+          "type": "dropdown",
+          "selector": ".se-toolbar-option-text-format",
+          "options": {
+            "본문": {
+              "selector": ".se-toolbar-option-text-format-text-button",
+              "dataValue": "text",
+              "dataLog": "prt.fmttext",
+              "description": "본문"
+            },
+            "소제목": {
+              "selector": ".se-toolbar-option-text-format-sectionTitle-button",
+              "dataValue": "sectionTitle",
+              "dataLog": "prt.fmtquot",
+              "description": "소제목"
+            },
+            "인용구": {
+              "selector": ".se-toolbar-option-text-format-quotation-button",
+              "dataValue": "quotation",
+              "dataLog": "prt.fmtstit",
+              "description": "인용구"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "changeTextFormat",
+        "modulePath": "./modules/text-format-module",
+        "fileName": "text-format-module.js",
+        "usage": "await changeTextFormat(page, frame, formatType);",
+        "description": "텍스트 서식 변경 모듈 함수",
+        "codeSnippet": "// 텍스트 서식 버튼 클릭 → 드롭다운 열기 → 원하는 서식 선택\nawait frame.click('.se-text-format-toolbar-button');\nawait frame.waitForSelector('.se-toolbar-option-text-format');\nawait frame.click('.se-toolbar-option-text-format-sectionTitle-button');"
+      }
+    },
+    "글꼴": {
+      "selector": ".se-font-family-toolbar-button",
+      "dataName": "font-family",
+      "dataLog": "prt.font",
+      "description": "서체 변경",
+      "hasDropdown": true,
+      "defaultValue": "나눔고딕",
+      "children": {
+        "dropdownOptions": {
+          "type": "dropdown",
+          "selector": ".se-toolbar-option-font-family",
+          "options": {
+            "기본서체": {
+              "selector": ".se-toolbar-option-font-family-system-button",
+              "dataValue": "system",
+              "dataLog": "prt.font1",
+              "description": "기본서체"
+            },
+            "나눔고딕": {
+              "selector": ".se-toolbar-option-font-family-nanumgothic-button",
+              "dataValue": "nanumgothic",
+              "dataLog": "prt.font2",
+              "description": "나눔고딕"
+            },
+            "나눔명조": {
+              "selector": ".se-toolbar-option-font-family-nanummyeongjo-button",
+              "dataValue": "nanummyeongjo",
+              "dataLog": "prt.font3",
+              "description": "나눔명조"
+            },
+            "나눔바른고딕": {
+              "selector": ".se-toolbar-option-font-family-nanumbarungothic-button",
+              "dataValue": "nanumbarungothic",
+              "dataLog": "prt.font4",
+              "description": "나눔바른고딕"
+            },
+            "나눔스퀘어": {
+              "selector": ".se-toolbar-option-font-family-nanumsquare-button",
+              "dataValue": "nanumsquare",
+              "dataLog": "prt.font5",
+              "description": "나눔스퀘어"
+            },
+            "마루부리": {
+              "selector": ".se-toolbar-option-font-family-nanummaruburi-button",
+              "dataValue": "nanummaruburi",
+              "dataLog": "prt.font6",
+              "description": "마루부리"
+            },
+            "다시시작해": {
+              "selector": ".se-toolbar-option-font-family-nanumdasisijaghae-button",
+              "dataValue": "nanumdasisijaghae",
+              "dataLog": "prt.font7",
+              "description": "다시시작해"
+            },
+            "바른히피": {
+              "selector": ".se-toolbar-option-font-family-nanumbareunhipi-button",
+              "dataValue": "nanumbareunhipi",
+              "dataLog": "prt.font8",
+              "description": "바른히피"
+            },
+            "우리딸손글씨": {
+              "selector": ".se-toolbar-option-font-family-nanumuriddalsongeulssi-button",
+              "dataValue": "nanumuriddalsongeulssi",
+              "dataLog": "prt.font9",
+              "description": "우리딸손글씨"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "changeFontFamily",
+        "modulePath": "./modules/font-family-module",
+        "fileName": "font-family-module.js",
+        "usage": "await changeFontFamily(page, frame, fontName);",
+        "description": "글꼴 변경 모듈 함수",
+        "codeSnippet": "// 글꼴 버튼 클릭 → 드롭다운 열기 → 원하는 글꼴 선택\nawait frame.click('.se-font-family-toolbar-button');\nawait frame.waitForSelector('.se-toolbar-option-font-family');\nawait frame.click('.se-toolbar-option-font-family-nanummyeongjo-button');"
+      }
+    },
+    "글자크기": {
+      "selector": ".se-font-size-code-toolbar-button",
+      "dataName": "font-size",
+      "dataLog": "prt.size",
+      "description": "글자 크기 변경",
+      "hasDropdown": true,
+      "defaultValue": "15",
+      "children": {
+        "dropdownOptions": {
+          "type": "dropdown",
+          "selector": ".se-toolbar-option-font-size-code",
+          "options": {
+            "11": {
+              "selector": ".se-toolbar-option-font-size-code-fs11-button",
+              "dataValue": "fs11",
+              "dataLog": "prt.size11",
+              "description": "11"
+            },
+            "13": {
+              "selector": ".se-toolbar-option-font-size-code-fs13-button",
+              "dataValue": "fs13",
+              "dataLog": "prt.size13",
+              "description": "13"
+            },
+            "15": {
+              "selector": ".se-toolbar-option-font-size-code-fs15-button",
+              "dataValue": "fs15",
+              "dataLog": "prt.size15",
+              "description": "15"
+            },
+            "16": {
+              "selector": ".se-toolbar-option-font-size-code-fs16-button",
+              "dataValue": "fs16",
+              "dataLog": "prt.size16",
+              "description": "16"
+            },
+            "19": {
+              "selector": ".se-toolbar-option-font-size-code-fs19-button",
+              "dataValue": "fs19",
+              "dataLog": "prt.size19",
+              "description": "19"
+            },
+            "24": {
+              "selector": ".se-toolbar-option-font-size-code-fs24-button",
+              "dataValue": "fs24",
+              "dataLog": "prt.size24",
+              "description": "24"
+            },
+            "28": {
+              "selector": ".se-toolbar-option-font-size-code-fs28-button",
+              "dataValue": "fs28",
+              "dataLog": "prt.size28",
+              "description": "28"
+            },
+            "30": {
+              "selector": ".se-toolbar-option-font-size-code-fs30-button",
+              "dataValue": "fs30",
+              "dataLog": "prt.size30",
+              "description": "30"
+            },
+            "34": {
+              "selector": ".se-toolbar-option-font-size-code-fs34-button",
+              "dataValue": "fs34",
+              "dataLog": "prt.size34",
+              "description": "34"
+            },
+            "38": {
+              "selector": ".se-toolbar-option-font-size-code-fs38-button",
+              "dataValue": "fs38",
+              "dataLog": "prt.size38",
+              "description": "38"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "changeFontSize",
+        "modulePath": "./modules/font-size-module",
+        "fileName": "font-size-module.js",
+        "usage": "await changeFontSize(page, frame, size);",
+        "description": "글자 크기 변경 모듈 함수",
+        "codeSnippet": "// 글자 크기 버튼 클릭 → 드롭다운 열기 → 원하는 크기 선택\nawait frame.click('.se-font-size-code-toolbar-button');\nawait frame.waitForSelector('.se-toolbar-option-font-size-code');\nawait frame.click('.se-toolbar-option-font-size-code-fs24-button');"
+      }
+    },
+    "굵게": {
+      "selector": ".se-bold-toolbar-button",
+      "dataName": "bold",
+      "dataLog": "prt.bold",
+      "description": "굵기 적용",
+      "type": "toggle",
+      "children": {}
+    },
+    "기울이기": {
+      "selector": ".se-italic-toolbar-button",
+      "dataName": "italic",
+      "dataLog": "prt.italic",
+      "description": "기울이기 적용",
+      "type": "toggle",
+      "children": {}
+    },
+    "밑줄": {
+      "selector": ".se-underline-toolbar-button",
+      "dataName": "underline",
+      "dataLog": "prt.underline",
+      "description": "밑줄 적용",
+      "type": "toggle",
+      "children": {}
+    },
+    "취소선": {
+      "selector": ".se-strikethrough-toolbar-button",
+      "dataName": "strikethrough",
+      "dataLog": "prt.strike",
+      "description": "취소선 적용",
+      "type": "toggle",
+      "children": {}
+    },
+    "글자색": {
+      "selector": ".se-font-color-toolbar-button",
+      "dataName": "font-color",
+      "dataLog": "prt.color",
+      "description": "글자색 변경",
+      "type": "color-picker",
+      "hasDropdown": true,
+      "children": {
+        "colorPalette": {
+          "type": "color-picker",
+          "selector": ".se-color-swatches",
+          "mainColors": {
+            "없음": { "selector": ".se-color-palette-no-color", "dataColor": "", "description": "색상 없음" },
+            "검정": { "selector": ".se-color-palette[data-color='#000000']", "dataColor": "#000000", "description": "검정" },
+            "빨강": { "selector": ".se-color-palette[data-color='#ff0010']", "dataColor": "#ff0010", "description": "빨강" },
+            "파랑": { "selector": ".se-color-palette[data-color='#0078cb']", "dataColor": "#0078cb", "description": "파랑" },
+            "초록": { "selector": ".se-color-palette[data-color='#00a84b']", "dataColor": "#00a84b", "description": "초록" },
+            "노랑": { "selector": ".se-color-palette[data-color='#ffd300']", "dataColor": "#ffd300", "description": "노랑" },
+            "보라": { "selector": ".se-color-palette[data-color='#aa1f91']", "dataColor": "#aa1f91", "description": "보라" },
+            "핑크": { "selector": ".se-color-palette[data-color='#ff65a8']", "dataColor": "#ff65a8", "description": "핑크" },
+            "주황": { "selector": ".se-color-palette[data-color='#ff9300']", "dataColor": "#ff9300", "description": "주황" },
+            "회색": { "selector": ".se-color-palette[data-color='#777777']", "dataColor": "#777777", "description": "회색" }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "changeFontColor",
+        "modulePath": "./modules/color-picker-module",
+        "fileName": "color-picker-module.js",
+        "usage": "await changeFontColor(page, frame, color);",
+        "description": "글자색 변경 모듈 함수"
+      }
+    },
+    "배경색": {
+      "selector": ".se-background-color-toolbar-button",
+      "dataName": "background-color",
+      "dataLog": "prt.bgcolor",
+      "description": "글자 배경색 변경",
+      "type": "color-picker",
+      "hasDropdown": true,
+      "children": {
+        "colorPalette": {
+          "type": "color-picker",
+          "selector": ".se-color-swatches",
+          "mainColors": {
+            "없음": { "selector": ".se-color-palette-no-color", "dataColor": "", "description": "색상 없음" },
+            "노란하이라이트": { "selector": ".se-color-palette[data-color='#fff8b2']", "dataColor": "#fff8b2", "description": "노란 하이라이트" },
+            "연두하이라이트": { "selector": ".se-color-palette[data-color='#e3fdc8']", "dataColor": "#e3fdc8", "description": "연두 하이라이트" },
+            "민트하이라이트": { "selector": ".se-color-palette[data-color='#bdfbfa']", "dataColor": "#bdfbfa", "description": "민트 하이라이트" },
+            "하늘하이라이트": { "selector": ".se-color-palette[data-color='#b0f1ff']", "dataColor": "#b0f1ff", "description": "하늘 하이라이트" },
+            "분홍하이라이트": { "selector": ".se-color-palette[data-color='#fdd5f5']", "dataColor": "#fdd5f5", "description": "분홍 하이라이트" },
+            "회색배경": { "selector": ".se-color-palette[data-color='#e2e2e2']", "dataColor": "#e2e2e2", "description": "회색 배경" },
+            "검정배경": { "selector": ".se-color-palette[data-color='#000000']", "dataColor": "#000000", "description": "검정 배경" },
+            "흰색배경": { "selector": ".se-color-palette[data-color='#ffffff']", "dataColor": "#ffffff", "description": "흰색 배경" }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "changeBackgroundColor",
+        "modulePath": "./modules/color-picker-module",
+        "fileName": "color-picker-module.js",
+        "usage": "await changeBackgroundColor(page, frame, color);",
+        "description": "배경색 변경 모듈 함수"
+      }
+    },
+    "정렬": {
+      "selector": ".se-align-left-toolbar-button",
+      "dataName": "align-drop-down-with-justify",
+      "dataLog": "prt.align",
+      "description": "정렬 열기",
+      "hasDropdown": true,
+      "children": {
+        "dropdownOptions": {
+          "type": "dropdown",
+          "selector": ".se-toolbar-option-align",
+          "options": {
+            "왼쪽": {
+              "selector": ".se-toolbar-option-align-left-button",
+              "dataValue": "left",
+              "dataLog": "prt.left",
+              "description": "왼쪽 정렬"
+            },
+            "가운데": {
+              "selector": ".se-toolbar-option-align-center-button",
+              "dataValue": "center",
+              "dataLog": "prt.center",
+              "description": "가운데 정렬"
+            },
+            "오른쪽": {
+              "selector": ".se-toolbar-option-align-right-button",
+              "dataValue": "right",
+              "dataLog": "prt.right",
+              "description": "오른쪽 정렬"
+            },
+            "양끝": {
+              "selector": ".se-toolbar-option-align-justify-button",
+              "dataValue": "justify",
+              "dataLog": "prt.justify",
+              "description": "양끝 정렬"
+            }
+          }
+        }
+      },
+      "implementation": {
+        "moduleFunction": "changeAlignment",
+        "modulePath": "./modules/align-module",
+        "fileName": "align-module.js",
+        "usage": "await changeAlignment(page, frame, align);",
+        "description": "정렬 변경 모듈 함수"
+      }
+    },
+    "줄간격": {
+      "selector": ".se-line-height-toolbar-button",
+      "dataName": "line-height",
+      "dataLog": "prt.line",
+      "description": "줄간격 열기",
+      "hasDropdown": true,
+      "children": {}
+    },
+    "목록": {
+      "selector": ".se-list-bullet-toolbar-button",
+      "dataName": "list",
+      "dataLog": "prt.list",
+      "description": "목록 열기",
+      "hasDropdown": true,
+      "children": {}
+    },
+    "머리글자": {
+      "selector": ".se-drop-cap-toolbar-button",
+      "dataName": "drop-cap",
+      "dataLog": "prt.dropcap",
+      "description": "머리글자 적용",
+      "type": "toggle",
+      "children": {}
+    },
+    "위첨자": {
+      "selector": ".se-superscript-toolbar-button",
+      "dataName": "superscript",
+      "dataLog": "prt.supsct",
+      "description": "위첨자 적용",
+      "type": "toggle",
+      "children": {}
+    },
+    "아래첨자": {
+      "selector": ".se-subscript-toolbar-button",
+      "dataName": "subscript",
+      "dataLog": "prt.subsct",
+      "description": "아래첨자 적용",
+      "type": "toggle",
+      "children": {}
+    },
+    "특수문자": {
+      "selector": ".se-special-letter-toolbar-button",
+      "dataName": "special-letter",
+      "dataLog": "prt.spclet",
+      "description": "특수문자 열기",
+      "children": {}
+    },
+    "링크텍스트": {
+      "selector": ".se-link-toolbar-button",
+      "dataName": "text-link",
+      "dataLog": "prt.urllink",
+      "description": "링크 입력 열기",
+      "hasDropdown": true,
+      "children": {}
+    },
+    "번역": {
+      "selector": ".se-translation-toolbar-button",
+      "dataName": "translation-right-label",
+      "dataLog": "prt.translation",
+      "description": "번역",
+      "children": {}
+    },
+    "맞춤법": {
+      "selector": ".se-speller-toolbar-button",
+      "dataName": "speller",
+      "dataLog": "prt.spl",
+      "description": "맞춤법",
+      "children": {}
+    }
+  }
+}

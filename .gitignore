@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Electron build output
+dist/
+out/
+
+# Sensitive files
+config.json
+settings/post_id.txt
+setting.txt
+cookies/
+.env
+
+# Generated content (runtime artifacts)
+result.json
+result_*.txt
+imgs/
+/img_*
+posted/
+post_dashboard/selected_account.txt
+
+# Keyword tracking (runtime state)
+used_keywords.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Binaries
+*.dll
+*.exe
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# Package lock (optional - uncomment if you want to track it)
+# package-lock.json
