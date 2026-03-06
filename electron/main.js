@@ -9,6 +9,35 @@ const { runScript, stopProcess, isRunning } = require('./process-runner');
 const { getPublicIP } = require('./ip-checker');
 const ipChanger = require('./ip-changer');
 
+const os = require('os');
+
+function findChromePath() {
+    const platform = os.platform();
+    let chromePaths = [];
+    if (platform === 'win32') {
+        chromePaths = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+            path.join(os.homedir(), 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe')
+        ];
+    } else if (platform === 'darwin') {
+        chromePaths = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            path.join(os.homedir(), '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
+        ];
+    } else {
+        chromePaths = [
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium-browser'
+        ];
+    }
+    for (const p of chromePaths) {
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
 let mainWindow = null;
 
 function createWindow() {
@@ -381,13 +410,18 @@ ipcMain.handle('naver:login', async (event, id) => {
     if (!account) return { success: false, error: 'Account not found' };
 
     try {
-        const puppeteer = require('puppeteer');
+        const puppeteer = require('puppeteer-core');
+        const chromePath = findChromePath();
+        if (!chromePath) {
+            return { success: false, error: 'Chrome이 설치되어 있지 않습니다. Chrome을 먼저 설치해주세요.' };
+        }
         sender.send('naver:loginLog', { type: 'info', data: `${id} 로그인 시도 중...\n` });
 
         const browser = await puppeteer.launch({
             headless: false,
             ignoreHTTPSErrors: true,
             defaultViewport: null,
+            executablePath: chromePath,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',

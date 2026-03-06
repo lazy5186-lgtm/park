@@ -20,7 +20,7 @@
     "electron-updater": "^6.3.9",
     "fluent-ffmpeg": "^2.1.3",
     "iconv-lite": "^0.7.2",
-    "puppeteer": "^24.38.0",
+    "puppeteer-core": "^24.38.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
@@ -61,15 +61,6 @@
       "used_keywords.json",
       "imgs/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "node_modules/puppeteer",
-        "to": "puppeteer",
-        "filter": [
-          "**/*"
-        ]
-      }
     ],
     "asar": false
   }
