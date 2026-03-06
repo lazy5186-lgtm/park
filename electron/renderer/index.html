@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PARK SAMPLE - 블로그 자동화</title>
+    <title> N_blog_auto</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,24 +12,16 @@
     <nav id="sidebar">
         <div class="sidebar-header">
             <span class="material-symbols-outlined">edit_note</span>
-            <h2>PARK SAMPLE</h2>
+            <h2>N_blog_auto</h2>
         </div>
         <ul class="nav-list">
             <li class="nav-item active" data-page="dashboard">
                 <span class="material-symbols-outlined">dashboard</span>
                 <span>대시보드</span>
             </li>
-            <li class="nav-item" data-page="generate">
-                <span class="material-symbols-outlined">auto_awesome</span>
-                <span>글 생성</span>
-            </li>
             <li class="nav-item" data-page="posting">
                 <span class="material-symbols-outlined">send</span>
                 <span>블로그 포스팅</span>
-            </li>
-            <li class="nav-item" data-page="settings">
-                <span class="material-symbols-outlined">settings</span>
-                <span>설정</span>
             </li>
             <li class="nav-item" data-page="keywords">
                 <span class="material-symbols-outlined">label</span>
@@ -65,6 +57,13 @@
         <!-- Dashboard Page -->
         <section id="page-dashboard" class="page active">
             <h1>대시보드</h1>
+            <div class="version-bar">
+                <span class="version-text">v<span id="appVersion">-</span></span>
+                <button class="btn btn-sm btn-primary" id="btnCheckUpdate">
+                    <span class="material-symbols-outlined">system_update</span> 최신버전 확인
+                </button>
+                <span class="version-status" id="versionStatus"></span>
+            </div>
             <div class="card-grid">
                 <div class="card stat-card">
                     <span class="material-symbols-outlined card-icon">article</span>
@@ -88,41 +87,208 @@
                     </div>
                 </div>
             </div>
-            <div class="quick-actions">
-                <h3>빠른 실행</h3>
-                <div class="btn-group">
-                    <button class="btn btn-primary" id="quickGenerate">
-                        <span class="material-symbols-outlined">auto_awesome</span> 글 생성
+
+            <form id="settingsForm" class="settings-grid">
+                <div class="card settings-card">
+                    <h3><span class="material-symbols-outlined">key</span> API 설정</h3>
+                    <div class="form-group">
+                        <label>Gemini API Key</label>
+                        <input type="password" id="cfgApiKey" placeholder="AIzaSy...">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>텍스트 모델</label>
+                            <select id="cfgTextModel">
+                                <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>이미지 모델</label>
+                            <select id="cfgImageModel">
+                                <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                                <option value="gemini-3.1-flash-image-preview">gemini-3.1-flash-image-preview</option>
+                                <option value="gemini-2.0-flash-preview-image-generation">gemini-2.0-flash-preview-image-generation</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>이미지 생성 장수</label>
+                        <select id="cfgImageCount">
+                            <option value="0">자동 (AI가 결정)</option>
+                            <option value="1">1장</option>
+                            <option value="2">2장</option>
+                            <option value="3">3장</option>
+                            <option value="4">4장</option>
+                            <option value="5">5장</option>
+                            <option value="6">6장</option>
+                            <option value="7">7장</option>
+                            <option value="8">8장</option>
+                            <option value="9">9장</option>
+                            <option value="10">10장</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="card settings-card">
+                    <h3><span class="material-symbols-outlined">person</span> 네이버 계정 관리</h3>
+                    <div class="naver-account-add">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>아이디</label>
+                                <input type="text" id="cfgNaverIdNew" placeholder="네이버 ID">
+                            </div>
+                            <div class="form-group">
+                                <label>비밀번호</label>
+                                <input type="password" id="cfgNaverPwNew" placeholder="비밀번호">
+                            </div>
+                        </div>
+                        <div class="naver-account-actions">
+                            <button type="button" class="btn btn-sm btn-primary" id="btnAddNaverAccount">
+                                <span class="material-symbols-outlined">person_add</span> 계정 추가
+                            </button>
+                            <button type="button" class="btn btn-sm btn-accent" id="btnNaverLogin">
+                                <span class="material-symbols-outlined">login</span> 로그인 (쿠키 저장)
+                            </button>
+                        </div>
+                    </div>
+                    <div class="naver-account-list" id="naverAccountList">
+                        <p class="empty-msg">등록된 계정이 없습니다.</p>
+                    </div>
+                </div>
+
+                <div class="card settings-card">
+                    <h3><span class="material-symbols-outlined">image</span> 이미지 오버레이</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>오버레이 카카오 ID</label>
+                            <input type="text" id="cfgOverlayKakao" placeholder="loandr_">
+                        </div>
+                        <div class="form-group">
+                            <label>오버레이 전화번호</label>
+                            <input type="text" id="cfgOverlayPhone" placeholder="010-0000-0000">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- IP 변경 섹션 -->
+                <div class="ip-section">
+                    <div class="card ip-control-card">
+                        <h3><span class="material-symbols-outlined">swap_vert</span> IP 변경 (테더링)</h3>
+                        <div class="ip-status-row">
+                            <div class="ip-info">
+                                <span class="ip-label">현재 IP:</span>
+                                <span id="currentIp" class="ip-value">-</span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-primary" id="btnCheckIp">
+                                <span class="material-symbols-outlined">refresh</span> IP 확인
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <label>네트워크 인터페이스</label>
+                            <div class="interface-row">
+                                <select id="cfgInterfaceName">
+                                    <option value="">자동 감지</option>
+                                </select>
+                                <button type="button" class="btn-icon" id="btnRefreshInterfaces" title="인터페이스 목록 갱신">
+                                    <span class="material-symbols-outlined">search</span>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary" id="btnChangeIp">
+                            <span class="material-symbols-outlined">swap_vert</span> IP 변경
+                        </button>
+                    </div>
+                    <div class="card ip-log-card">
+                        <h3>IP 변경 로그</h3>
+                        <div class="log-output ip-log-output" id="ipLog"></div>
+                    </div>
+                </div>
+
+                <div class="settings-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="material-symbols-outlined">save</span> 설정 저장
                     </button>
-                    <button class="btn btn-primary" id="quickPost">
-                        <span class="material-symbols-outlined">send</span> 포스팅
+                </div>
+            </form>
+        </section>
+
+        <!-- Posting Page (통합) -->
+        <section id="page-posting" class="page">
+            <h1>블로그 포스팅</h1>
+            <p class="page-desc">AI 블로그 글 생성 및 네이버 블로그 포스팅을 실행합니다.</p>
+            <!-- 임시 저장 상태 -->
+            <div class="draft-status card" id="draftStatus" style="display:none;">
+                <div class="draft-info">
+                    <span class="material-symbols-outlined draft-icon">description</span>
+                    <div class="draft-text">
+                        <strong id="draftTitle">-</strong>
+                        <small id="draftMeta">-</small>
+                    </div>
+                </div>
+                <div class="draft-actions">
+                    <button class="btn btn-sm btn-primary" id="btnPostDraft">
+                        <span class="material-symbols-outlined">publish</span> 이 글 포스팅
                     </button>
-                    <button class="btn btn-accent" id="quickAuto">
-                        <span class="material-symbols-outlined">play_circle</span> 자동 실행
+                    <button class="btn btn-sm btn-danger" id="btnDeleteDraft">
+                        <span class="material-symbols-outlined">delete</span> 삭제
                     </button>
                 </div>
             </div>
-            <div class="card log-card">
-                <h3>실시간 로그</h3>
-                <div class="log-output" id="dashboardLog"></div>
-            </div>
-        </section>
 
-        <!-- Generate Page -->
-        <section id="page-generate" class="page">
-            <h1>글 생성</h1>
-            <p class="page-desc">generate_article.js를 실행하여 AI 블로그 글을 생성합니다.</p>
-            <div class="btn-group">
-                <button class="btn btn-primary" id="btnGenerate">
-                    <span class="material-symbols-outlined">auto_awesome</span> 글 생성 시작
+            <div class="mode-selector">
+                <label class="mode-option">
+                    <input type="radio" name="postMode" value="generate">
+                    <span>글 생성만</span>
+                    <small>AI 글 + 이미지 생성</small>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="postMode" value="post">
+                    <span>포스팅만</span>
+                    <small>생성된 글 발행 (없으면 자동 생성)</small>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="postMode" value="auto">
+                    <span>자동 실행</span>
+                    <small>글 생성 + 포스팅 연속</small>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="postMode" value="autoAll">
+                    <span>전체 계정 자동</span>
+                    <small>모든 계정 순차 (IP변경+글생성+포스팅)</small>
+                </label>
+            </div>
+            <div class="posting-toolbar">
+                <button class="btn btn-sm btn-primary" id="btnPost">
+                    <span class="material-symbols-outlined">play_circle</span> 실행
                 </button>
-                <button class="btn btn-danger" id="btnStopGenerate" disabled>
+                <button class="btn btn-sm btn-danger" id="btnStopPost" disabled>
                     <span class="material-symbols-outlined">stop_circle</span> 중지
                 </button>
+                <div class="toolbar-divider"></div>
+                <div class="schedule-inline">
+                    <div class="schedule-mode-radios">
+                        <label class="toggle-label">
+                            <input type="radio" name="scheduleMode" value="manual" id="cfgScheduleManual" checked>
+                            <span>예약발행</span>
+                        </label>
+                        <label class="toggle-label">
+                            <input type="radio" name="scheduleMode" value="instant" id="cfgScheduleInstant">
+                            <span>즉시발행</span>
+                        </label>
+                    </div>
+                    <div class="schedule-fields-inline" id="scheduleFields">
+                        <input type="date" id="cfgScheduleDate" title="예약 날짜">
+                        <input type="number" id="cfgScheduleHour" min="0" max="23" placeholder="시" title="시">
+                        <span class="schedule-colon">:</span>
+                        <input type="number" id="cfgScheduleMinute" min="0" max="59" step="10" placeholder="분" title="분">
+                    </div>
+                </div>
             </div>
             <div class="card log-card">
                 <h3>실행 로그</h3>
-                <div class="log-output" id="generateLog"></div>
+                <div class="log-output" id="postLog"></div>
             </div>
 
             <!-- 결과 미리보기 -->
@@ -151,132 +317,16 @@
             </div>
         </section>
 
-        <!-- Posting Page -->
-        <section id="page-posting" class="page">
-            <h1>블로그 포스팅</h1>
-            <p class="page-desc">생성된 글을 네이버 블로그에 포스팅합니다.</p>
-            <div class="mode-selector">
-                <label class="mode-option">
-                    <input type="radio" name="postMode" value="manual" checked>
-                    <span>수동 포스팅</span>
-                    <small>3.post.js 1회 실행</small>
-                </label>
-                <label class="mode-option">
-                    <input type="radio" name="postMode" value="auto">
-                    <span>자동 실행</span>
-                    <small>글 생성 + 포스팅 연속</small>
-                </label>
-            </div>
-            <div class="btn-group">
-                <button class="btn btn-primary" id="btnPost">
-                    <span class="material-symbols-outlined">send</span> 포스팅 시작
-                </button>
-                <button class="btn btn-danger" id="btnStopPost" disabled>
-                    <span class="material-symbols-outlined">stop_circle</span> 중지
-                </button>
-            </div>
-            <div class="card log-card">
-                <h3>실행 로그</h3>
-                <div class="log-output" id="postLog"></div>
-            </div>
-        </section>
-
-        <!-- Settings Page -->
-        <section id="page-settings" class="page">
-            <h1>설정</h1>
-            <form id="settingsForm" class="settings-grid">
-                <div class="card settings-card">
-                    <h3><span class="material-symbols-outlined">key</span> API 설정</h3>
-                    <div class="form-group">
-                        <label>Gemini API Key</label>
-                        <input type="password" id="cfgApiKey" placeholder="AIzaSy...">
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>텍스트 모델</label>
-                            <select id="cfgTextModel">
-                                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>이미지 모델</label>
-                            <select id="cfgImageModel">
-                                <option value="gemini-3.1-flash-image-preview">gemini-3.1-flash-image-preview</option>
-                                <option value="gemini-2.0-flash-preview-image-generation">gemini-2.0-flash-preview-image-generation</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card settings-card">
-                    <h3><span class="material-symbols-outlined">person</span> 네이버 계정</h3>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>아이디</label>
-                            <input type="text" id="cfgNaverId" placeholder="네이버 ID">
-                        </div>
-                        <div class="form-group">
-                            <label>비밀번호</label>
-                            <input type="password" id="cfgNaverPw" placeholder="비밀번호">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card settings-card">
-                    <h3><span class="material-symbols-outlined">chat</span> 카카오 / 오버레이</h3>
-                    <div class="form-group">
-                        <label>카카오톡 상담 링크</label>
-                        <input type="text" id="cfgKakaoLink" placeholder="https://open.kakao.com/...">
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>오버레이 카카오 ID</label>
-                            <input type="text" id="cfgOverlayKakao" placeholder="loandr_">
-                        </div>
-                        <div class="form-group">
-                            <label>오버레이 전화번호</label>
-                            <input type="text" id="cfgOverlayPhone" placeholder="010-0000-0000">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card settings-card">
-                    <h3><span class="material-symbols-outlined">tune</span> 실행 옵션</h3>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>포스팅 간격 최소 (시간)</label>
-                            <input type="number" id="cfgDelayMin" step="0.5" min="0">
-                        </div>
-                        <div class="form-group">
-                            <label>포스팅 간격 최대 (시간)</label>
-                            <input type="number" id="cfgDelayMax" step="0.5" min="0">
-                        </div>
-                    </div>
-                    <div class="form-row toggles">
-                        <label class="toggle-label">
-                            <input type="checkbox" id="cfgUseVideo">
-                            <span>동영상 사용</span>
-                        </label>
-                        <label class="toggle-label">
-                            <input type="checkbox" id="cfgRandomTyping">
-                            <span>랜덤 타이핑</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="settings-actions">
-                    <button type="submit" class="btn btn-primary">
-                        <span class="material-symbols-outlined">save</span> 설정 저장
-                    </button>
-                </div>
-            </form>
-        </section>
-
         <!-- Keywords Page -->
         <section id="page-keywords" class="page">
             <h1>키워드 관리</h1>
+            <div class="card keyword-input-area">
+                <h3><span class="material-symbols-outlined">add_circle</span> 키워드 직접 추가</h3>
+                <textarea id="kwCustomInput" rows="3" placeholder="키워드를 쉼표(,)로 구분하여 입력하세요. 예: 대출상담, 신용대출, 주택담보대출"></textarea>
+                <button class="btn btn-primary btn-sm" id="btnAddCustomKeywords">
+                    <span class="material-symbols-outlined">add</span> 키워드 추가
+                </button>
+            </div>
             <div class="card-grid keyword-grid">
                 <div class="card">
                     <h3>전체 키워드 풀 (<span id="kwTotalCount">0</span>개)</h3>
@@ -309,10 +359,11 @@
                             <th>계정</th>
                             <th>날짜</th>
                             <th>시간</th>
+                            <th>링크</th>
                         </tr>
                     </thead>
                     <tbody id="historyBody">
-                        <tr><td colspan="4" class="empty-msg">기록을 불러오는 중...</td></tr>
+                        <tr><td colspan="5" class="empty-msg">기록을 불러오는 중...</td></tr>
                     </tbody>
                 </table>
             </div>

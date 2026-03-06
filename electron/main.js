@@ -2,8 +2,12 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
-const { loadConfig, saveConfig, loadKeywords, resetKeywords, loadHistory } = require('./config-manager');
+const { loadConfig, saveConfig, loadKeywords, resetKeywords, removeKeyword, saveCustomKeywords, loadHistory,
+    loadNaverAccounts, addNaverAccount, removeNaverAccount, selectNaverAccount,
+    getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies } = require('./config-manager');
 const { runScript, stopProcess, isRunning } = require('./process-runner');
+const { getPublicIP } = require('./ip-checker');
+const ipChanger = require('./ip-changer');
 
 let mainWindow = null;
 
@@ -13,7 +17,7 @@ function createWindow() {
         height: 750,
         minWidth: 900,
         minHeight: 600,
-        title: 'PARK SAMPLE - 블로그 자동화',
+        title: 'N_blog_auto',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -46,8 +50,13 @@ app.whenReady().then(() => {
         mainWindow?.webContents.send('update:downloaded', { version: info.version });
     });
 
+    autoUpdater.on('update-not-available', () => {
+        mainWindow?.webContents.send('update:notAvailable');
+    });
+
     autoUpdater.on('error', (err) => {
         console.log('업데이트 체크 오류:', err.message);
+        mainWindow?.webContents.send('update:error', { message: err.message });
     });
 
     autoUpdater.checkForUpdatesAndNotify();
@@ -59,6 +68,19 @@ app.on('window-all-closed', () => {
 });
 
 // ---- IPC Handlers ----
+
+ipcMain.handle('app:version', () => {
+    return app.getVersion();
+});
+
+ipcMain.handle('update:check', async () => {
+    try {
+        const result = await autoUpdater.checkForUpdates();
+        return { checking: true };
+    } catch (e) {
+        return { error: e.message };
+    }
+});
 
 ipcMain.handle('update:install', () => {
     autoUpdater.quitAndInstall();
@@ -79,33 +101,185 @@ ipcMain.handle('script:generate', (event) => {
     return { started: true };
 });
 
+function isResultValid() {
+    const resultPath = path.join(__dirname, '..', 'result.json');
+    try {
+        const data = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
+        // h1이 있거나, sections에 데이터가 있으면 유효
+        return !!(data.gemini && data.gemini.sections && data.gemini.sections.length > 0);
+    } catch (e) {
+        return false;
+    }
+}
+
 ipcMain.handle('script:post', (event) => {
     const config = loadConfig();
-    runScript('3.post.js', config, event.sender);
+    const sender = event.sender;
+
+    if (!isResultValid()) {
+        sender.send('script:log', { type: 'info', data: 'result.json이 없거나 글 데이터가 없습니다. 글 생성을 먼저 실행합니다...\n' });
+        runScript('generate_article.js', config, {
+            send: (channel, data) => {
+                // 중간 단계에서는 script:done을 프론트엔드로 보내지 않음 (로그만 전달)
+                if (channel === 'script:done') {
+                    if (isResultValid()) {
+                        sender.send('script:log', { type: 'info', data: '\n글 생성 완료! 포스팅을 시작합니다...\n' });
+                        setTimeout(() => {
+                            runScript('3.post.js', config, sender);
+                        }, 1000);
+                    } else {
+                        sender.send('script:log', { type: 'stderr', data: '\n글 생성에 실패했습니다. 포스팅을 중단합니다.\n' });
+                        sender.send('script:done', { code: 1, script: '3.post.js' });
+                    }
+                } else {
+                    sender.send(channel, data);
+                }
+            }
+        });
+    } else {
+        sender.send('script:log', { type: 'info', data: '임시 저장된 글이 있습니다. 바로 포스팅을 시작합니다...\n' });
+        runScript('3.post.js', config, sender);
+    }
+    return { started: true };
+});
+
+// "이 글 포스팅" 버튼 전용 - 무조건 3.post.js만 실행 (generate 없음)
+ipcMain.handle('script:postDraft', (event) => {
+    const config = loadConfig();
+    const sender = event.sender;
+
+    if (!isResultValid()) {
+        sender.send('script:log', { type: 'stderr', data: '임시 저장된 글이 없습니다. 글 생성을 먼저 실행해주세요.\n' });
+        sender.send('script:done', { code: 1, script: '3.post.js' });
+        return { started: false };
+    }
+
+    sender.send('script:log', { type: 'info', data: '임시 저장된 글을 포스팅합니다...\n' });
+    runScript('3.post.js', config, sender);
     return { started: true };
 });
 
 ipcMain.handle('script:auto', (event) => {
     const config = loadConfig();
-    // 자동 모드: generate → 완료 후 post
     const sender = event.sender;
 
-    sender.send('script:log', { type: 'info', data: '🔄 자동 모드: 글 생성 시작...\n' });
+    sender.send('script:log', { type: 'info', data: '자동 모드: 글 생성 시작...\n' });
     runScript('generate_article.js', config, {
         send: (channel, data) => {
-            sender.send(channel, data);
-            if (channel === 'script:done' && data.code === 0) {
-                setTimeout(() => {
-                    sender.send('script:log', { type: 'info', data: '\n🔄 자동 모드: 포스팅 시작...\n' });
-                    runScript('3.post.js', config, sender);
-                }, 1000);
+            if (channel === 'script:done') {
+                if (isResultValid()) {
+                    sender.send('script:log', { type: 'info', data: '\n자동 모드: 글 생성 완료! 포스팅 시작...\n' });
+                    setTimeout(() => {
+                        runScript('3.post.js', config, sender);
+                    }, 1000);
+                } else {
+                    sender.send('script:log', { type: 'stderr', data: '\n글 생성에 실패했습니다. 포스팅을 중단합니다.\n' });
+                    sender.send('script:done', { code: 1, script: '3.post.js' });
+                }
+            } else {
+                sender.send(channel, data);
             }
         }
     });
     return { started: true };
 });
 
+// 모든 계정 순차 자동 포스팅 (계정별 IP 변경 + 글 생성 + 포스팅)
+let autoAllAborted = false;
+
+ipcMain.handle('script:autoAll', async (event) => {
+    const config = loadConfig();
+    const sender = event.sender;
+    const accountsData = loadNaverAccounts();
+    const accounts = accountsData.accounts;
+    autoAllAborted = false;
+
+    if (accounts.length === 0) {
+        sender.send('script:log', { type: 'stderr', data: '등록된 네이버 계정이 없습니다.\n' });
+        sender.send('script:done', { code: 1, script: 'autoAll' });
+        return { started: false };
+    }
+
+    sender.send('script:log', { type: 'info', data: `=== 전체 계정 자동 포스팅 시작 (${accounts.length}개 계정) ===\n\n` });
+
+    for (let idx = 0; idx < accounts.length; idx++) {
+        if (autoAllAborted) {
+            sender.send('script:log', { type: 'info', data: '\n사용자에 의해 중단되었습니다.\n' });
+            break;
+        }
+
+        const account = accounts[idx];
+        sender.send('script:log', { type: 'info', data: `\n======== [${idx + 1}/${accounts.length}] ${account.id} 계정 처리 시작 ========\n` });
+
+        // 1. IP 변경
+        sender.send('script:log', { type: 'info', data: `\n🔄 IP 변경 중...\n` });
+        try {
+            const interfaceName = null;
+            const newIp = await ipChanger.changeIP(interfaceName, (msg) => {
+                sender.send('script:log', { type: 'info', data: `  ${msg}\n` });
+            });
+            sender.send('script:log', { type: 'info', data: `✅ IP 변경 완료: ${newIp}\n\n` });
+        } catch (e) {
+            sender.send('script:log', { type: 'stderr', data: `⚠️ IP 변경 실패: ${e.message} (계속 진행합니다)\n\n` });
+        }
+
+        if (autoAllAborted) break;
+
+        // 2. 글 생성 (generate_article.js)
+        const generateSuccess = await new Promise((resolve) => {
+            sender.send('script:log', { type: 'info', data: `📝 ${account.id} - 글 생성 시작...\n` });
+            runScript('generate_article.js', config, {
+                send: (channel, data) => {
+                    if (channel === 'script:done') {
+                        resolve(isResultValid());
+                    } else {
+                        sender.send(channel, data);
+                    }
+                }
+            }, { id: account.id, pw: account.pw });
+        });
+
+        if (autoAllAborted) break;
+
+        if (!generateSuccess) {
+            sender.send('script:log', { type: 'stderr', data: `❌ ${account.id} - 글 생성 실패. 다음 계정으로 넘어갑니다.\n` });
+            continue;
+        }
+
+        // 3. 포스팅 (3.post.js)
+        sender.send('script:log', { type: 'info', data: `\n📤 ${account.id} - 포스팅 시작...\n` });
+        await new Promise((resolve) => {
+            setTimeout(() => {
+                runScript('3.post.js', config, {
+                    send: (channel, data) => {
+                        if (channel === 'script:done') {
+                            resolve();
+                        } else {
+                            sender.send(channel, data);
+                        }
+                    }
+                }, { id: account.id, pw: account.pw });
+            }, 1000);
+        });
+
+        if (autoAllAborted) break;
+
+        sender.send('script:log', { type: 'info', data: `\n✅ ${account.id} 계정 포스팅 완료!\n` });
+
+        // 다음 계정 전 5초 대기
+        if (idx < accounts.length - 1) {
+            sender.send('script:log', { type: 'info', data: `\n⏳ 다음 계정 처리 전 5초 대기...\n` });
+            await new Promise(r => setTimeout(r, 5000));
+        }
+    }
+
+    sender.send('script:log', { type: 'info', data: `\n=== 전체 계정 자동 포스팅 완료 ===\n` });
+    sender.send('script:done', { code: 0, script: 'autoAll' });
+    return { started: true };
+});
+
 ipcMain.handle('script:stop', () => {
+    autoAllAborted = true;
     const stopped = stopProcess();
     return { stopped };
 });
@@ -119,8 +293,195 @@ ipcMain.handle('keywords:reset', () => {
     return { success: true };
 });
 
+ipcMain.handle('keywords:addCustom', (_event, keywords) => {
+    const merged = saveCustomKeywords(keywords);
+    return { success: true, count: merged.length };
+});
+
+ipcMain.handle('keywords:remove', (_event, keyword) => {
+    removeKeyword(keyword);
+    return { success: true };
+});
+
 ipcMain.handle('history:load', () => {
     return loadHistory();
+});
+
+// ---- IP 변경 ----
+ipcMain.handle('ip:check', async () => {
+    const ip = await getPublicIP();
+    return { ip: ip || '확인 불가' };
+});
+
+ipcMain.handle('ip:interfaces', () => {
+    return ipChanger.listInterfaces();
+});
+
+ipcMain.handle('ip:change', async (event, interfaceName) => {
+    const sender = event.sender;
+    try {
+        const newIp = await ipChanger.changeIP(interfaceName || null, (msg) => {
+            sender.send('ip:log', { type: 'info', data: `${msg}\n` });
+        });
+        return { success: true, ip: newIp };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+// ---- Naver Account Management ----
+ipcMain.handle('naver:loadAccounts', () => {
+    const data = loadNaverAccounts();
+    // Attach cookie status to each account
+    const accounts = data.accounts.map(a => ({
+        ...a,
+        pw: '****', // Don't expose password to renderer
+        cookieStatus: getNaverAccountCookieStatus(a.id)
+    }));
+    return { accounts, selectedId: data.selectedId };
+});
+
+ipcMain.handle('naver:addAccount', (_event, { id, pw }) => {
+    addNaverAccount(id, pw);
+    const data = loadNaverAccounts();
+    const accounts = data.accounts.map(a => ({
+        ...a,
+        pw: '****',
+        cookieStatus: getNaverAccountCookieStatus(a.id)
+    }));
+    return { accounts, selectedId: data.selectedId };
+});
+
+ipcMain.handle('naver:removeAccount', (_event, id) => {
+    removeNaverAccount(id);
+    const data = loadNaverAccounts();
+    const accounts = data.accounts.map(a => ({
+        ...a,
+        pw: '****',
+        cookieStatus: getNaverAccountCookieStatus(a.id)
+    }));
+    return { accounts, selectedId: data.selectedId };
+});
+
+ipcMain.handle('naver:selectAccount', (_event, id) => {
+    selectNaverAccount(id);
+    const data = loadNaverAccounts();
+    const accounts = data.accounts.map(a => ({
+        ...a,
+        pw: '****',
+        cookieStatus: getNaverAccountCookieStatus(a.id)
+    }));
+    return { accounts, selectedId: data.selectedId };
+});
+
+ipcMain.handle('naver:login', async (event, id) => {
+    const sender = event.sender;
+    const data = loadNaverAccounts();
+    const account = data.accounts.find(a => a.id === id);
+    if (!account) return { success: false, error: 'Account not found' };
+
+    try {
+        const puppeteer = require('puppeteer');
+        sender.send('naver:loginLog', { type: 'info', data: `${id} 로그인 시도 중...\n` });
+
+        const browser = await puppeteer.launch({
+            headless: false,
+            ignoreHTTPSErrors: true,
+            defaultViewport: null,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-infobars',
+                '--disable-automation',
+                '--disable-blink-features=AutomationControlled',
+                '--ignore-certificate-errors',
+                '--start-maximized'
+            ]
+        });
+
+        const page = await browser.newPage();
+        await page.evaluateOnNewDocument(() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        });
+
+        // Try loading existing cookies first
+        const existingCookies = loadNaverCookies(id);
+        if (existingCookies) {
+            const cookies = Array.isArray(existingCookies) ? existingCookies : (existingCookies.cookies || []);
+            if (cookies.length > 0) {
+                await page.setCookie(...cookies);
+                sender.send('naver:loginLog', { type: 'info', data: 'Existing cookies loaded, checking login status...\n' });
+            }
+        }
+
+        // Check if already logged in
+        await page.goto('https://www.naver.com', { waitUntil: 'networkidle0', timeout: 30000 });
+        const loginButton = await page.$('.MyView-module__my_login___tOTgr');
+
+        if (loginButton) {
+            sender.send('naver:loginLog', { type: 'info', data: 'Login required, navigating to login page...\n' });
+            await page.goto('https://nid.naver.com/nidlogin.login', { waitUntil: 'networkidle0', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 1000));
+
+            await page.evaluate((uid, pw) => {
+                document.querySelector('#id').value = uid;
+                document.querySelector('#pw').value = pw;
+            }, account.id, account.pw);
+
+            const keepLogin = await page.$('#keep');
+            if (keepLogin) {
+                const isChecked = await page.evaluate(el => el.checked, keepLogin);
+                if (!isChecked) await keepLogin.click();
+            }
+
+            const ipSecurity = await page.$('#switch');
+            if (ipSecurity) {
+                const isOn = await page.evaluate(el => el.value === 'on', ipSecurity);
+                if (isOn) await ipSecurity.click();
+            }
+
+            await page.click('.btn_login');
+            sender.send('naver:loginLog', { type: 'info', data: 'Login button clicked. Waiting...\n' });
+            await new Promise(r => setTimeout(r, 3000));
+
+            // Navigate to naver.com to verify + collect cookies
+            await page.goto('https://www.naver.com', { waitUntil: 'networkidle0', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 2000));
+        } else {
+            sender.send('naver:loginLog', { type: 'info', data: 'Already logged in with cookies!\n' });
+        }
+
+        // Verify login success
+        const stillNeedLogin = await page.$('.MyView-module__my_login___tOTgr');
+        if (stillNeedLogin) {
+            sender.send('naver:loginLog', { type: 'info', data: 'Waiting for manual login or captcha resolution...\n' });
+            // Wait up to 120 seconds for manual login
+            for (let i = 0; i < 60; i++) {
+                await new Promise(r => setTimeout(r, 2000));
+                await page.goto('https://www.naver.com', { waitUntil: 'networkidle0', timeout: 30000 });
+                const check = await page.$('.MyView-module__my_login___tOTgr');
+                if (!check) {
+                    sender.send('naver:loginLog', { type: 'info', data: 'Login confirmed!\n' });
+                    break;
+                }
+                if (i === 59) {
+                    await browser.close();
+                    return { success: false, error: 'Login timeout (2 minutes)' };
+                }
+            }
+        }
+
+        // Save cookies
+        const cookies = await page.cookies();
+        saveNaverCookies(id, cookies);
+        sender.send('naver:loginLog', { type: 'info', data: `Cookies saved for ${id} (${cookies.length} cookies)\n` });
+
+        await browser.close();
+        return { success: true };
+    } catch (err) {
+        sender.send('naver:loginLog', { type: 'stderr', data: `Login error: ${err.message}\n` });
+        return { success: false, error: err.message };
+    }
 });
 
 ipcMain.handle('result:load', () => {
@@ -152,4 +513,18 @@ ipcMain.handle('result:load', () => {
         console.error('result.json 로드 오류:', e.message);
     }
     return { exists: false };
+});
+
+ipcMain.handle('result:delete', () => {
+    const resultPath = path.join(__dirname, '..', 'result.json');
+    const imgsDir = path.join(__dirname, '..', 'imgs');
+    try {
+        if (fs.existsSync(resultPath)) fs.unlinkSync(resultPath);
+        if (fs.existsSync(imgsDir)) {
+            fs.readdirSync(imgsDir).forEach(f => fs.unlinkSync(path.join(imgsDir, f)));
+        }
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
 });

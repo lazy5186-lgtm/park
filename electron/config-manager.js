@@ -8,11 +8,13 @@ const DEFAULT_CONFIG = {
     naverAccount: { id: '', pw: '' },
     kakaoLink: '',
     overlay: { kakaoId: 'loandr_', phone: '010-8442-4224' },
-    imageModel: 'gemini-3.1-flash-image-preview',
-    textModel: 'gemini-2.5-pro',
-    postingInterval: { min: 3.5, max: 5 },
-    useVideo: false,
-    randomTyping: false
+    imageModel: 'gemini-2.5-flash-image',
+    textModel: 'gemini-3-flash-preview',
+    imageCount: 0,
+    scheduleMode: 'manual',
+    scheduleDate: '',
+    scheduleHour: '',
+    scheduleMinute: ''
 };
 
 function loadConfig() {
@@ -81,6 +83,29 @@ function loadKeywords() {
         }
     } catch (e) { /* ignore */ }
 
+    // custom_keywords.json 에서 추가 키워드 읽기
+    try {
+        const customPath = path.join(__dirname, '..', 'custom_keywords.json');
+        if (fs.existsSync(customPath)) {
+            const custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
+            if (Array.isArray(custom)) {
+                allKeywords = [...allKeywords, ...custom.filter(k => k && !allKeywords.includes(k))];
+            }
+        }
+    } catch (e) { /* ignore */ }
+
+    // removed_keywords.json 에서 삭제된 키워드 필터링
+    let removedKeywords = [];
+    try {
+        const removedPath = path.join(__dirname, '..', 'removed_keywords.json');
+        if (fs.existsSync(removedPath)) {
+            removedKeywords = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
+        }
+    } catch (e) { /* ignore */ }
+    if (removedKeywords.length > 0) {
+        allKeywords = allKeywords.filter(k => !removedKeywords.includes(k));
+    }
+
     try {
         if (fs.existsSync(usedPath)) {
             usedKeywords = JSON.parse(fs.readFileSync(usedPath, 'utf-8'));
@@ -95,6 +120,55 @@ function resetKeywords() {
     fs.writeFileSync(usedPath, '[]', 'utf-8');
 }
 
+function removeKeyword(keyword) {
+    // custom_keywords.json에서 제거
+    const customPath = path.join(__dirname, '..', 'custom_keywords.json');
+    try {
+        if (fs.existsSync(customPath)) {
+            let custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
+            custom = custom.filter(k => k !== keyword);
+            fs.writeFileSync(customPath, JSON.stringify(custom, null, 2), 'utf-8');
+        }
+    } catch (e) { /* ignore */ }
+
+    // removed_keywords.json에 추가 (프롬프트 키워드 차단용)
+    const removedPath = path.join(__dirname, '..', 'removed_keywords.json');
+    let removed = [];
+    try {
+        if (fs.existsSync(removedPath)) {
+            removed = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
+        }
+    } catch (e) { /* ignore */ }
+    if (!removed.includes(keyword)) {
+        removed.push(keyword);
+        fs.writeFileSync(removedPath, JSON.stringify(removed, null, 2), 'utf-8');
+    }
+}
+
+function saveCustomKeywords(keywords) {
+    const customPath = path.join(__dirname, '..', 'custom_keywords.json');
+    let existing = [];
+    try {
+        if (fs.existsSync(customPath)) {
+            existing = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
+        }
+    } catch (e) { /* ignore */ }
+    const merged = [...existing, ...keywords.filter(k => k && !existing.includes(k))];
+    fs.writeFileSync(customPath, JSON.stringify(merged, null, 2), 'utf-8');
+
+    // removed_keywords.json에서 다시 추가된 키워드 제거 (복원)
+    const removedPath = path.join(__dirname, '..', 'removed_keywords.json');
+    try {
+        if (fs.existsSync(removedPath)) {
+            let removed = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
+            removed = removed.filter(k => !keywords.includes(k));
+            fs.writeFileSync(removedPath, JSON.stringify(removed, null, 2), 'utf-8');
+        }
+    } catch (e) { /* ignore */ }
+
+    return merged;
+}
+
 function loadHistory() {
     const postedDir = path.join(__dirname, '..', 'posted');
     const records = [];
@@ -107,15 +181,16 @@ function loadHistory() {
             const content = fs.readFileSync(path.join(postedDir, file), 'utf-8');
             const lines = content.split('\n').filter(l => l.trim());
             for (const line of lines) {
-                // Format: 1회:2026-03-05:12:40분
-                const match = line.match(/(\d+)회:(\d{4}-\d{2}-\d{2}):(\d+):(\d+)분/);
+                // Format: 1회:2026-03-05:12:40분:URL (URL은 선택)
+                const match = line.match(/(\d+)회:(\d{4}-\d{2}-\d{2}):(\d+):(\d+)분(?::(.+))?/);
                 if (match) {
                     records.push({
                         accountId,
                         count: parseInt(match[1]),
                         date: match[2],
                         hour: match[3],
-                        minute: match[4]
+                        minute: match[4],
+                        url: match[5] || ''
                     });
                 }
             }
@@ -129,4 +204,94 @@ function loadHistory() {
     });
 }
 
-module.exports = { loadConfig, saveConfig, loadKeywords, resetKeywords, loadHistory };
+// ---- Naver Account Management ----
+function getNaverAccountsPath() {
+    return path.join(__dirname, '..', 'naver_accounts.json');
+}
+
+function getCookiesDir() {
+    const dir = path.join(__dirname, '..', 'cookies');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+function loadNaverAccounts() {
+    try {
+        const p = getNaverAccountsPath();
+        if (fs.existsSync(p)) {
+            return JSON.parse(fs.readFileSync(p, 'utf-8'));
+        }
+    } catch (e) { /* ignore */ }
+    return { accounts: [], selectedId: null };
+}
+
+function saveNaverAccounts(data) {
+    fs.writeFileSync(getNaverAccountsPath(), JSON.stringify(data, null, 2), 'utf-8');
+}
+
+function addNaverAccount(id, pw) {
+    const data = loadNaverAccounts();
+    const existing = data.accounts.find(a => a.id === id);
+    if (existing) {
+        existing.pw = pw;
+    } else {
+        data.accounts.push({ id, pw });
+    }
+    if (!data.selectedId) data.selectedId = id;
+    saveNaverAccounts(data);
+    return data;
+}
+
+function removeNaverAccount(id) {
+    const data = loadNaverAccounts();
+    data.accounts = data.accounts.filter(a => a.id !== id);
+    if (data.selectedId === id) {
+        data.selectedId = data.accounts.length > 0 ? data.accounts[0].id : null;
+    }
+    // Remove cookie file
+    const cookiePath = path.join(getCookiesDir(), `${id}_cookies.json`);
+    if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
+    saveNaverAccounts(data);
+    return data;
+}
+
+function selectNaverAccount(id) {
+    const data = loadNaverAccounts();
+    if (data.accounts.find(a => a.id === id)) {
+        data.selectedId = id;
+        saveNaverAccounts(data);
+    }
+    return data;
+}
+
+function getNaverAccountCookieStatus(id) {
+    const cookiePath = path.join(getCookiesDir(), `${id}_cookies.json`);
+    if (!fs.existsSync(cookiePath)) return { hasCookie: false };
+    try {
+        const stat = fs.statSync(cookiePath);
+        return { hasCookie: true, lastSaved: stat.mtime.toISOString() };
+    } catch (e) {
+        return { hasCookie: false };
+    }
+}
+
+function saveNaverCookies(id, cookies) {
+    const cookiePath = path.join(getCookiesDir(), `${id}_cookies.json`);
+    fs.writeFileSync(cookiePath, JSON.stringify(cookies, null, 2), 'utf-8');
+}
+
+function loadNaverCookies(id) {
+    const cookiePath = path.join(getCookiesDir(), `${id}_cookies.json`);
+    if (!fs.existsSync(cookiePath)) return null;
+    try {
+        return JSON.parse(fs.readFileSync(cookiePath, 'utf-8'));
+    } catch (e) {
+        return null;
+    }
+}
+
+module.exports = {
+    loadConfig, saveConfig, loadKeywords, resetKeywords, removeKeyword, saveCustomKeywords, loadHistory,
+    loadNaverAccounts, saveNaverAccounts, addNaverAccount, removeNaverAccount, selectNaverAccount,
+    getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies, getCookiesDir
+};

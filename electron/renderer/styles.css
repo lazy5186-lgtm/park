@@ -198,6 +198,41 @@ h1 {
     margin-bottom: 20px;
 }
 
+/* ===== Version Bar ===== */
+.version-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 8px 14px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.version-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--oxford-navy);
+    font-family: 'Consolas', monospace;
+}
+
+.version-status {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.version-status.latest {
+    color: #38a169;
+    font-weight: 500;
+}
+
+.version-status.updating {
+    color: var(--cerulean);
+    font-weight: 500;
+}
+
 /* ===== Cards ===== */
 .card {
     background: var(--card-bg);
@@ -438,6 +473,300 @@ h1 {
     color: var(--text-muted);
 }
 
+/* ===== Draft Status ===== */
+.draft-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px !important;
+    margin-bottom: 14px;
+    background: var(--honeydew) !important;
+    border: 1px solid #c6f6d5 !important;
+}
+
+.draft-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.draft-icon {
+    font-size: 22px;
+    color: #38a169;
+    flex-shrink: 0;
+}
+
+.draft-text {
+    min-width: 0;
+}
+
+.draft-text strong {
+    display: block;
+    font-size: 13px;
+    color: var(--oxford-navy);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.draft-text small {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.draft-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* ===== Posting Toolbar ===== */
+.posting-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--border);
+    flex-shrink: 0;
+}
+
+/* ===== Schedule Fields ===== */
+.schedule-inline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.schedule-mode-radios {
+    display: flex;
+    gap: 12px;
+}
+
+.schedule-mode-radios .toggle-label {
+    font-size: 12px;
+}
+
+.schedule-mode-radios .toggle-label input[type="radio"] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--cerulean);
+}
+
+.schedule-fields-inline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.schedule-fields-inline input[type="date"] {
+    width: 130px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text);
+}
+
+.schedule-fields-inline input[type="number"] {
+    width: 44px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text);
+    text-align: center;
+}
+
+.schedule-fields-inline input:focus {
+    outline: none;
+    border-color: var(--cerulean);
+}
+
+.schedule-colon {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.schedule-fields-inline[style*="display: none"],
+.schedule-fields-inline.hidden {
+    display: none !important;
+}
+
+/* ===== Keyword Input Area ===== */
+.keyword-input-area {
+    margin-bottom: 16px;
+}
+
+.keyword-input-area h3 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    margin-bottom: 12px;
+    color: var(--oxford-navy);
+}
+
+.keyword-input-area h3 .material-symbols-outlined {
+    font-size: 20px;
+    color: var(--cerulean);
+}
+
+.keyword-input-area textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    margin-bottom: 8px;
+    color: var(--text);
+    transition: border-color 0.15s;
+}
+
+.keyword-input-area textarea:focus {
+    outline: none;
+    border-color: var(--cerulean);
+    box-shadow: 0 0 0 2px rgba(69,123,157,0.15);
+}
+
+/* ===== IP Change ===== */
+.interface-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.interface-row select {
+    flex: 1;
+}
+
+.btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--cerulean);
+    color: #fff;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+    padding: 0;
+}
+
+.btn-icon:hover {
+    background: #3a6a87;
+}
+
+.btn-icon .material-symbols-outlined {
+    font-size: 16px;
+}
+
+.ip-section {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.ip-control-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.ip-control-card > * {
+    width: 100%;
+}
+
+.ip-control-card > h3 {
+    width: auto;
+    align-self: flex-start;
+}
+
+.ip-control-card > #btnChangeIp {
+    width: auto;
+    align-self: center;
+}
+
+.ip-control-card h3 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    margin-bottom: 12px;
+    color: var(--oxford-navy);
+}
+
+.ip-control-card h3 .material-symbols-outlined {
+    font-size: 20px;
+    color: var(--cerulean);
+}
+
+.ip-log-card h3 {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.ip-log-output {
+    height: 160px;
+}
+
+.ip-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    background: var(--bg);
+    border-radius: var(--radius);
+    gap: 8px;
+    flex-wrap: nowrap;
+}
+
+.ip-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex-shrink: 1;
+}
+
+.ip-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.ip-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cerulean);
+    font-family: 'Consolas', monospace;
+    white-space: nowrap;
+}
+
+.ip-status-row .btn {
+    flex-shrink: 0;
+}
+
 /* ===== Keywords ===== */
 .keyword-grid {
     grid-template-columns: 1fr 1fr;
@@ -480,6 +809,24 @@ h1 {
     color: #276749;
 }
 
+.kw-delete {
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: 0.4;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    margin-left: 4px;
+    padding: 0 2px;
+    transition: opacity 0.15s;
+}
+
+.kw-delete:hover {
+    opacity: 1;
+    color: var(--punch-red);
+}
+
 /* ===== History Table ===== */
 .history-table {
     width: 100%;
@@ -509,6 +856,91 @@ h1 {
     text-align: center;
     color: var(--text-muted);
     padding: 40px 0 !important;
+}
+
+/* ===== Naver Account Management ===== */
+.naver-account-add {
+    margin-bottom: 12px;
+}
+
+.naver-account-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.naver-account-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.naver-account-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+    background: var(--bg);
+    font-size: 13px;
+}
+
+.naver-account-item.selected {
+    border-color: var(--cerulean);
+    background: #edf6fc;
+}
+
+.naver-account-item .account-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.naver-account-item .account-id {
+    font-weight: 600;
+}
+
+.naver-account-item .cookie-status {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #e2e8f0;
+    color: var(--text-muted);
+}
+
+.naver-account-item .cookie-status.valid {
+    background: #c6f6d5;
+    color: #276749;
+}
+
+.naver-account-item .account-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.naver-account-item .account-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.naver-account-item .account-actions button:hover {
+    background: var(--border);
+    color: var(--text);
+}
+
+.naver-account-item .account-actions button.btn-select {
+    color: var(--cerulean);
+}
+
+.naver-account-item .account-actions button.btn-delete {
+    color: var(--punch-red);
 }
 
 /* ===== Quick Actions ===== */

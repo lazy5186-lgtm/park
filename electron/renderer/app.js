@@ -7,10 +7,10 @@ function navigateTo(pageName) {
     pages.forEach(page => page.classList.toggle('active', page.id === `page-${pageName}`));
 
     // Load page-specific data
-    if (pageName === 'settings') loadSettings();
+    if (pageName === 'dashboard') { loadDashboard(); loadSettings(); }
     if (pageName === 'keywords') loadKeywords();
     if (pageName === 'history') loadHistory();
-    if (pageName === 'dashboard') loadDashboard();
+    if (pageName === 'posting') { loadSettings(); loadDraftStatus(); loadResultPreview(); }
 }
 
 navItems.forEach(item => {
@@ -57,34 +57,26 @@ function appendLog(containerId, data) {
     span.textContent = data.data;
     el.appendChild(span);
     el.scrollTop = el.scrollHeight;
-
-    // Also mirror to dashboard log
-    if (containerId !== 'dashboardLog') {
-        const dash = document.getElementById('dashboardLog');
-        const clone = span.cloneNode(true);
-        dash.appendChild(clone);
-        dash.scrollTop = dash.scrollHeight;
-    }
 }
-
-// Track which log container is active
-let activeLogContainer = 'dashboardLog';
 
 // ===== Script event listeners =====
 window.api.script.onLog((data) => {
-    appendLog(activeLogContainer, data);
-    if (activeLogContainer !== 'dashboardLog') {
-        appendLog('dashboardLog', data);
-    }
+    appendLog('postLog', data);
 });
 
 window.api.script.onDone((data) => {
     setRunning(false);
     if (data.code === 0) {
         showToast(`${data.script} 완료`, 'success');
-        // 글 생성 완료 시 결과 미리보기 로드
+        // 글 생성 완료 시 결과 미리보기 + 임시저장 상태 로드
         if (data.script === 'generate_article.js') {
+            loadDraftStatus();
             loadResultPreview();
+        }
+        // 포스팅 완료 시 기록 새로고침 + 임시저장 상태 갱신
+        if (data.script === '3.post.js') {
+            loadDashboard();
+            loadDraftStatus();
         }
     } else {
         showToast(`${data.script} 종료 (코드: ${data.code})`, 'error');
@@ -114,49 +106,52 @@ async function loadDashboard() {
     }
 }
 
-// Dashboard quick buttons
-document.getElementById('quickGenerate').addEventListener('click', async () => {
-    activeLogContainer = 'dashboardLog';
+// ===== Draft Status =====
+async function loadDraftStatus() {
+    const result = await window.api.result.load();
+    const el = document.getElementById('draftStatus');
+
+    if (result.exists && result.data.gemini && result.data.gemini.h1) {
+        const d = result.data;
+        const imgCount = (result.images || []).length;
+        const sectionCount = (d.gemini.sections || []).length;
+        document.getElementById('draftTitle').textContent = d.gemini.h1;
+        document.getElementById('draftMeta').textContent =
+            `키워드: ${d.키워드 || '-'} · 섹션 ${sectionCount}개 · 이미지 ${imgCount}장`;
+        el.style.display = 'flex';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+document.getElementById('btnPostDraft').addEventListener('click', async () => {
+    document.getElementById('postLog').innerHTML = '';
     setRunning(true);
-    await window.api.script.generate();
+    await window.api.script.postDraft();
 });
 
-document.getElementById('quickPost').addEventListener('click', async () => {
-    activeLogContainer = 'dashboardLog';
-    setRunning(true);
-    await window.api.script.post();
+document.getElementById('btnDeleteDraft').addEventListener('click', async () => {
+    if (!confirm('임시 저장된 글을 삭제하시겠습니까?')) return;
+    await window.api.result.delete();
+    loadDraftStatus();
+    loadResultPreview();
+    showToast('임시 저장 글이 삭제되었습니다.', 'success');
 });
 
-document.getElementById('quickAuto').addEventListener('click', async () => {
-    activeLogContainer = 'dashboardLog';
-    setRunning(true);
-    await window.api.script.auto();
-});
-
-// ===== Generate Page =====
-document.getElementById('btnGenerate').addEventListener('click', async () => {
-    activeLogContainer = 'generateLog';
-    document.getElementById('generateLog').innerHTML = '';
-    setRunning(true);
-    await window.api.script.generate();
-});
-
-document.getElementById('btnStopGenerate').addEventListener('click', async () => {
-    await window.api.script.stop();
-    setRunning(false);
-    showToast('프로세스 중지됨');
-});
-
-// ===== Posting Page =====
+// ===== Posting Page (통합) =====
 document.getElementById('btnPost').addEventListener('click', async () => {
-    activeLogContainer = 'postLog';
     document.getElementById('postLog').innerHTML = '';
     setRunning(true);
 
     const mode = document.querySelector('input[name="postMode"]:checked').value;
-    if (mode === 'auto') {
+    if (mode === 'generate') {
+        await window.api.script.generate();
+    } else if (mode === 'auto') {
         await window.api.script.auto();
+    } else if (mode === 'autoAll') {
+        await window.api.script.autoAll();
     } else {
+        // post 모드: result.json 없으면 main.js에서 자동 생성 처리
         await window.api.script.post();
     }
 });
@@ -172,18 +167,33 @@ async function loadSettings() {
     const config = await window.api.config.load();
 
     document.getElementById('cfgApiKey').value = config.geminiApiKey || '';
-    document.getElementById('cfgTextModel').value = config.textModel || 'gemini-2.5-pro';
-    document.getElementById('cfgImageModel').value = config.imageModel || 'gemini-3.1-flash-image-preview';
-    document.getElementById('cfgNaverId').value = config.naverAccount?.id || '';
-    document.getElementById('cfgNaverPw').value = config.naverAccount?.pw || '';
-    document.getElementById('cfgKakaoLink').value = config.kakaoLink || '';
+    document.getElementById('cfgTextModel').value = config.textModel || 'gemini-3-flash-preview';
+    document.getElementById('cfgImageModel').value = config.imageModel || 'gemini-2.5-flash-image';
+    document.getElementById('cfgImageCount').value = String(config.imageCount || 0);
+    // Naver accounts are now managed separately via naver account list
+    // kakaoLink 제거됨
     document.getElementById('cfgOverlayKakao').value = config.overlay?.kakaoId || 'loandr_';
     document.getElementById('cfgOverlayPhone').value = config.overlay?.phone || '010-8442-4224';
-    document.getElementById('cfgDelayMin').value = config.postingInterval?.min ?? 3.5;
-    document.getElementById('cfgDelayMax').value = config.postingInterval?.max ?? 5;
-    document.getElementById('cfgUseVideo').checked = config.useVideo || false;
-    document.getElementById('cfgRandomTyping').checked = config.randomTyping || false;
+
+    // 발행 모드 (auto는 이제 없으므로 manual로 폴백)
+    let mode = config.scheduleMode || 'manual';
+    if (mode === 'auto') mode = 'manual';
+    const radio = document.querySelector(`input[name="scheduleMode"][value="${mode}"]`);
+    if (radio) radio.checked = true;
+    toggleScheduleFields(mode);
+
+    document.getElementById('cfgScheduleDate').value = config.scheduleDate || '';
+    document.getElementById('cfgScheduleHour').value = config.scheduleHour || '';
+    document.getElementById('cfgScheduleMinute').value = config.scheduleMinute || '';
 }
+
+function toggleScheduleFields(mode) {
+    document.getElementById('scheduleFields').style.display = mode === 'instant' ? 'none' : 'flex';
+}
+
+document.querySelectorAll('input[name="scheduleMode"]').forEach(radio => {
+    radio.addEventListener('change', (e) => toggleScheduleFields(e.target.value));
+});
 
 document.getElementById('settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -192,21 +202,15 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         geminiApiKey: document.getElementById('cfgApiKey').value.trim(),
         textModel: document.getElementById('cfgTextModel').value,
         imageModel: document.getElementById('cfgImageModel').value,
-        naverAccount: {
-            id: document.getElementById('cfgNaverId').value.trim(),
-            pw: document.getElementById('cfgNaverPw').value
-        },
-        kakaoLink: document.getElementById('cfgKakaoLink').value.trim(),
+        imageCount: parseInt(document.getElementById('cfgImageCount').value) || 0,
         overlay: {
             kakaoId: document.getElementById('cfgOverlayKakao').value.trim(),
             phone: document.getElementById('cfgOverlayPhone').value.trim()
         },
-        postingInterval: {
-            min: parseFloat(document.getElementById('cfgDelayMin').value) || 3.5,
-            max: parseFloat(document.getElementById('cfgDelayMax').value) || 5
-        },
-        useVideo: document.getElementById('cfgUseVideo').checked,
-        randomTyping: document.getElementById('cfgRandomTyping').checked
+        scheduleMode: document.querySelector('input[name="scheduleMode"]:checked')?.value || 'manual',
+        scheduleDate: document.getElementById('cfgScheduleDate').value || '',
+        scheduleHour: document.getElementById('cfgScheduleHour').value || '',
+        scheduleMinute: document.getElementById('cfgScheduleMinute').value || ''
     };
 
     await window.api.config.save(config);
@@ -223,23 +227,34 @@ async function loadKeywords() {
     const remaining = data.allKeywords.filter(k => !data.usedKeywords.includes(k));
     document.getElementById('kwRemainingCount').textContent = remaining.length;
 
-    // All keywords
+    // All keywords (with delete button)
     const allList = document.getElementById('kwAllList');
     allList.innerHTML = data.allKeywords.map(k => {
         const used = data.usedKeywords.includes(k);
-        return `<span class="kw-tag ${used ? 'used' : ''}">${k}</span>`;
+        return `<span class="kw-tag ${used ? 'used' : ''}">${escapeHtml(k)}<button class="kw-delete" data-keyword="${escapeHtml(k)}">&times;</button></span>`;
     }).join('');
+
+    // Attach delete handlers
+    allList.querySelectorAll('.kw-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const keyword = btn.dataset.keyword;
+            await window.api.keywords.remove(keyword);
+            await loadKeywords();
+            showToast(`"${keyword}" 삭제됨`, 'success');
+        });
+    });
 
     // Used keywords
     const usedList = document.getElementById('kwUsedList');
     usedList.innerHTML = data.usedKeywords.length > 0
-        ? data.usedKeywords.map(k => `<span class="kw-tag used">${k}</span>`).join('')
+        ? data.usedKeywords.map(k => `<span class="kw-tag used">${escapeHtml(k)}</span>`).join('')
         : '<span class="empty-msg">아직 사용된 키워드가 없습니다.</span>';
 
     // Remaining keywords
     const remList = document.getElementById('kwRemainingList');
     remList.innerHTML = remaining.length > 0
-        ? remaining.map(k => `<span class="kw-tag remaining">${k}</span>`).join('')
+        ? remaining.map(k => `<span class="kw-tag remaining">${escapeHtml(k)}</span>`).join('')
         : '<span class="empty-msg">모든 키워드가 사용되었습니다. 초기화가 필요합니다.</span>';
 }
 
@@ -251,24 +266,41 @@ document.getElementById('btnResetKeywords').addEventListener('click', async () =
     }
 });
 
+document.getElementById('btnAddCustomKeywords').addEventListener('click', async () => {
+    const input = document.getElementById('kwCustomInput').value.trim();
+    if (!input) return showToast('키워드를 입력해주세요.', 'error');
+
+    const keywords = input.split(',').map(k => k.trim()).filter(k => k.length > 0);
+    if (keywords.length === 0) return showToast('유효한 키워드가 없습니다.', 'error');
+
+    await window.api.keywords.addCustom(keywords);
+    document.getElementById('kwCustomInput').value = '';
+    await loadKeywords();
+    showToast(`${keywords.length}개 키워드가 추가되었습니다.`, 'success');
+});
+
 // ===== History Page =====
 async function loadHistory() {
     const records = await window.api.history.load();
     const body = document.getElementById('historyBody');
 
     if (records.length === 0) {
-        body.innerHTML = '<tr><td colspan="4" class="empty-msg">포스팅 기록이 없습니다.</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" class="empty-msg">포스팅 기록이 없습니다.</td></tr>';
         return;
     }
 
-    body.innerHTML = records.map(r =>
-        `<tr>
+    body.innerHTML = records.map(r => {
+        const linkCell = r.url
+            ? `<a href="${escapeHtml(r.url)}" target="_blank" rel="noopener" style="color:var(--cerulean); text-decoration:underline; cursor:pointer; font-size:12px;">보기</a>`
+            : '<span style="color:var(--text-muted);">-</span>';
+        return `<tr>
             <td>${r.count}회</td>
             <td>${r.accountId}</td>
             <td>${r.date}</td>
             <td>${r.hour}:${r.minute}</td>
-        </tr>`
-    ).join('');
+            <td>${linkCell}</td>
+        </tr>`;
+    }).join('');
 }
 
 // ===== Result Preview =====
@@ -329,6 +361,86 @@ function showImageModal(src) {
 
 document.getElementById('btnRefreshResult').addEventListener('click', loadResultPreview);
 
+// ===== IP 로그 =====
+window.api.ip.onLog((data) => {
+    appendLog('ipLog', data);
+});
+
+// ===== IP 변경 =====
+async function loadInterfaces() {
+    const list = await window.api.ip.interfaces();
+    const select = document.getElementById('cfgInterfaceName');
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">자동 감지</option>';
+    list.forEach(iface => {
+        const opt = document.createElement('option');
+        opt.value = iface.name;
+        opt.textContent = `${iface.name} (${iface.ip})`;
+        select.appendChild(opt);
+    });
+    if (currentVal) select.value = currentVal;
+}
+
+document.getElementById('btnCheckIp').addEventListener('click', async () => {
+    document.getElementById('currentIp').textContent = '확인 중...';
+    const result = await window.api.ip.check();
+    document.getElementById('currentIp').textContent = result.ip;
+});
+
+document.getElementById('btnRefreshInterfaces').addEventListener('click', async () => {
+    await loadInterfaces();
+    showToast('인터페이스 목록 갱신', 'success');
+});
+
+document.getElementById('btnChangeIp').addEventListener('click', async () => {
+    const btn = document.getElementById('btnChangeIp');
+    btn.disabled = true;
+    btn.textContent = 'IP 변경 중...';
+    document.getElementById('currentIp').textContent = '변경 중...';
+
+    const interfaceName = document.getElementById('cfgInterfaceName').value || '';
+    const result = await window.api.ip.change(interfaceName);
+
+    if (result.success) {
+        document.getElementById('currentIp').textContent = result.ip || '확인 불가';
+        showToast(`IP 변경 완료: ${result.ip}`, 'success');
+    } else {
+        document.getElementById('currentIp').textContent = '변경 실패';
+        showToast(`IP 변경 실패: ${result.error}`, 'error');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined">swap_vert</span> IP 변경';
+});
+
+// ===== Version & Update =====
+async function loadVersion() {
+    const version = await window.api.app.getVersion();
+    document.getElementById('appVersion').textContent = version;
+}
+
+document.getElementById('btnCheckUpdate').addEventListener('click', async () => {
+    const statusEl = document.getElementById('versionStatus');
+    statusEl.className = 'version-status updating';
+    statusEl.textContent = '확인 중...';
+    document.getElementById('btnCheckUpdate').disabled = true;
+    await window.api.update.check();
+});
+
+window.api.update.onNotAvailable(() => {
+    const statusEl = document.getElementById('versionStatus');
+    statusEl.className = 'version-status latest';
+    statusEl.textContent = '최신 버전입니다.';
+    document.getElementById('btnCheckUpdate').disabled = false;
+});
+
+window.api.update.onError((data) => {
+    const statusEl = document.getElementById('versionStatus');
+    statusEl.className = 'version-status';
+    statusEl.textContent = '업데이트 확인 실패';
+    document.getElementById('btnCheckUpdate').disabled = false;
+});
+
 // ===== Auto Update =====
 window.api.update.onAvailable((data) => {
     const banner = document.getElementById('updateBanner');
@@ -338,6 +450,11 @@ window.api.update.onAvailable((data) => {
     banner.style.display = 'block';
     message.textContent = `새 버전 v${data.version} 다운로드 중...`;
     progressBar.style.display = 'block';
+
+    const statusEl = document.getElementById('versionStatus');
+    statusEl.className = 'version-status updating';
+    statusEl.textContent = `v${data.version} 다운로드 중...`;
+    document.getElementById('btnCheckUpdate').disabled = true;
 });
 
 window.api.update.onProgress((data) => {
@@ -355,13 +472,132 @@ window.api.update.onDownloaded((data) => {
     message.textContent = `v${data.version} 다운로드 완료!`;
     progressBar.style.display = 'none';
     installBtn.style.display = 'inline-flex';
+
+    const statusEl = document.getElementById('versionStatus');
+    statusEl.className = 'version-status latest';
+    statusEl.textContent = `v${data.version} 업데이트 준비 완료`;
 });
 
 document.getElementById('btnUpdateInstall').addEventListener('click', () => {
     window.api.update.install();
 });
 
+// ===== Naver Account Management =====
+async function loadNaverAccounts() {
+    const data = await window.api.naver.loadAccounts();
+    renderNaverAccounts(data);
+}
+
+function renderNaverAccounts(data) {
+    const list = document.getElementById('naverAccountList');
+    if (!data.accounts || data.accounts.length === 0) {
+        list.innerHTML = '<p class="empty-msg">등록된 계정이 없습니다.</p>';
+        return;
+    }
+
+    list.innerHTML = data.accounts.map(a => {
+        const isSelected = a.id === data.selectedId;
+        const cookieLabel = a.cookieStatus?.hasCookie
+            ? `<span class="cookie-status valid">쿠키 저장됨</span>`
+            : `<span class="cookie-status">쿠키 없음</span>`;
+
+        return `<div class="naver-account-item ${isSelected ? 'selected' : ''}">
+            <div class="account-info">
+                <span class="account-id">${escapeHtml(a.id)}</span>
+                ${cookieLabel}
+                ${isSelected ? '<span style="color:var(--cerulean); font-size:11px; font-weight:600;">선택됨</span>' : ''}
+            </div>
+            <div class="account-actions">
+                <button class="btn-select" title="이 계정 선택" data-id="${escapeHtml(a.id)}">
+                    <span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>
+                </button>
+                <button title="로그인 (쿠키 저장)" data-login-id="${escapeHtml(a.id)}">
+                    <span class="material-symbols-outlined" style="font-size:18px;">login</span>
+                </button>
+                <button class="btn-delete" title="삭제" data-remove-id="${escapeHtml(a.id)}">
+                    <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+
+    // Attach event handlers
+    list.querySelectorAll('.btn-select').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const result = await window.api.naver.selectAccount(btn.dataset.id);
+            renderNaverAccounts(result);
+            showToast(`${btn.dataset.id} 선택됨`, 'success');
+        });
+    });
+
+    list.querySelectorAll('[data-login-id]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.loginId;
+            btn.disabled = true;
+            showToast(`${id} 로그인 중...`);
+            const result = await window.api.naver.login(id);
+            btn.disabled = false;
+            if (result.success) {
+                showToast(`${id} 쿠키 저장 완료!`, 'success');
+                await loadNaverAccounts();
+            } else {
+                showToast(`로그인 실패: ${result.error}`, 'error');
+            }
+        });
+    });
+
+    list.querySelectorAll('.btn-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm(`${btn.dataset.removeId} 계정을 삭제하시겠습니까?`)) return;
+            const result = await window.api.naver.removeAccount(btn.dataset.removeId);
+            renderNaverAccounts(result);
+            showToast('계정 삭제됨', 'success');
+        });
+    });
+}
+
+document.getElementById('btnAddNaverAccount').addEventListener('click', async () => {
+    const id = document.getElementById('cfgNaverIdNew').value.trim();
+    const pw = document.getElementById('cfgNaverPwNew').value;
+    if (!id || !pw) return showToast('아이디와 비밀번호를 입력해주세요.', 'error');
+
+    const result = await window.api.naver.addAccount(id, pw);
+    renderNaverAccounts(result);
+    document.getElementById('cfgNaverIdNew').value = '';
+    document.getElementById('cfgNaverPwNew').value = '';
+    showToast(`${id} 계정 추가됨`, 'success');
+});
+
+document.getElementById('btnNaverLogin').addEventListener('click', async () => {
+    const id = document.getElementById('cfgNaverIdNew').value.trim();
+    const pw = document.getElementById('cfgNaverPwNew').value;
+    if (!id || !pw) return showToast('아이디와 비밀번호를 입력해주세요.', 'error');
+
+    // Add account first, then login
+    await window.api.naver.addAccount(id, pw);
+    showToast(`${id} 로그인 중...`);
+    const result = await window.api.naver.login(id);
+    if (result.success) {
+        showToast(`${id} 로그인 + 쿠키 저장 완료!`, 'success');
+    } else {
+        showToast(`로그인 실패: ${result.error}`, 'error');
+    }
+    document.getElementById('cfgNaverIdNew').value = '';
+    document.getElementById('cfgNaverPwNew').value = '';
+    await loadNaverAccounts();
+});
+
+window.api.naver.onLoginLog((data) => {
+    appendLog('postLog', data);
+});
+
 // ===== Init =====
+loadVersion();
 loadDashboard();
-// 페이지 로드 시 기존 result.json이 있으면 미리보기 표시
-loadResultPreview();
+loadSettings();
+loadDraftStatus();
+loadNaverAccounts();
+loadInterfaces();
+window.api.ip.check().then(r => {
+    document.getElementById('currentIp').textContent = r.ip;
+});

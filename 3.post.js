@@ -21,7 +21,7 @@ const { handleAccountProtection } = require('./lib/account-protection-module');
 // ========================================
 // 🎯 설정 파일 선택 변수
 // ========================================
-const USE_ENV_FILE = 0;  // 1: .env 파일 사용, 0: settings/post_id.txt 파일 사용
+const USE_ENV_FILE = process.env.POST_ID ? 1 : 0;  // 환경변수에 POST_ID가 있으면 자동으로 env 사용
 
 // 로그인 확인 후 대기 시간 설정 (분 단위)
 const LOGIN_WAIT_MINUTES = 0.0001;  // 로그인 확인 후 대기 시간 (분)
@@ -30,10 +30,16 @@ const LOGIN_WAIT_MINUTES = 0.0001;  // 로그인 확인 후 대기 시간 (분)
 const POST_COMPLETION_WAIT_MINUTES = 0.00001;  // 발행 완료 후 3분 대기
 
 // 타이핑 속도 설정 (1: 랜덤 속도, 0: 매우 빠른 속도)
-const RANDOM_TYPING = process.env.RANDOM_TYPING !== undefined ? Number(process.env.RANDOM_TYPING) : 0;
+const RANDOM_TYPING = 0;
 
 // 동영상 생성 여부 (1: 동영상 생성 및 업로드, 0: 동영상 사용 안함)
-const USE_VIDEO = process.env.USE_VIDEO !== undefined ? Number(process.env.USE_VIDEO) : 0;
+const USE_VIDEO = 0;
+
+// 발행 모드 설정 (auto: 자동계산, instant: 즉시발행, manual: 직접지정)
+const SCHEDULE_MODE = process.env.SCHEDULE_MODE || 'auto';
+const SCHEDULE_DATE = process.env.SCHEDULE_DATE || '';
+const SCHEDULE_HOUR = process.env.SCHEDULE_HOUR || '';
+const SCHEDULE_MINUTE = process.env.SCHEDULE_MINUTE || '';
 
 // 카카오톡 상담 링크 (오픈채팅 URL 입력)
 const KAKAO_LINK = process.env.KAKAO_LINK !== undefined ? process.env.KAKAO_LINK : '';
@@ -318,8 +324,8 @@ function cleanupOldRecordsInFile(userId) {
         let deletedCount = 0;
 
         lines.forEach(line => {
-            // 새 형식: 1회:2025-08-31:13:30분
-            const newMatch = line.match(/(\d+)회:(\d{4}-\d{2}-\d{2}):(\d{2}):(\d{2})분/);
+            // 새 형식: 1회:2025-08-31:13:30분 또는 1회:2025-08-31:13:30분:URL
+            const newMatch = line.match(/(\d+)회:(\d{4}-\d{2}-\d{2}):(\d{2}):(\d{2})분(?::(.+))?/);
             if (newMatch) {
                 const recordDate = new Date(newMatch[2] + 'T00:00:00+09:00'); // KST 기준
                 const daysDiff = Math.floor((currentDate - recordDate) / (1000 * 60 * 60 * 24));
@@ -366,14 +372,15 @@ function loadPostedRecords(userId) {
     const lines = content.split('\n').filter(line => line.trim());
 
     const records = lines.map(line => {
-        // 새 형식: 1회:2025-08-31:13:30분
-        const newMatch = line.match(/(\d+)회:(\d{4}-\d{2}-\d{2}):(\d{2}):(\d{2})분/);
+        // 새 형식: 1회:2025-08-31:13:30분 또는 1회:2025-08-31:13:30분:URL
+        const newMatch = line.match(/(\d+)회:(\d{4}-\d{2}-\d{2}):(\d{2}):(\d{2})분(?::(.+))?/);
         if (newMatch) {
             return {
                 count: parseInt(newMatch[1]),
                 date: newMatch[2],
                 hour: parseInt(newMatch[3]),
-                minute: parseInt(newMatch[4])
+                minute: parseInt(newMatch[4]),
+                url: newMatch[5] || ''
             };
         }
 
@@ -414,7 +421,7 @@ function loadPostedRecords(userId) {
     return records;
 }
 
-function savePostedRecord(userId, hour, minute, scheduledDate = null) {
+function savePostedRecord(userId, hour, minute, scheduledDate = null, url = '') {
     const fileName = getPostedFileName(userId);
     const postedDir = path.join(__dirname, 'posted');
 
@@ -452,7 +459,8 @@ function savePostedRecord(userId, hour, minute, scheduledDate = null) {
     }
 
     const count = records.length + 1;
-    const newRecord = `${count}회:${dateStr}:${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}분\n`;
+    const urlSuffix = url ? `:${url}` : '';
+    const newRecord = `${count}회:${dateStr}:${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}분${urlSuffix}\n`;
 
     fs.appendFileSync(filePath, newRecord, 'utf-8');
     console.log(`발행 기록 저장: ${newRecord.trim()}`);
@@ -727,12 +735,7 @@ async function writePost(page, browser) {
             resultData = JSON.parse(fs.readFileSync('result.json', 'utf-8'));
         } catch (error) {
             if (error.code === 'ENOENT') {
-                console.error('\n❌ result.json 파일이 없습니다.');
-                console.error('📝 다음 순서대로 실행해주세요:');
-                console.error('   1️⃣ node 1.crawl.js');
-                console.error('   2️⃣ node 2.gemini_run.js');
-                console.error('   3️⃣ node 3.post.js');
-                console.error('');
+                console.error('result.json 파일이 없습니다. 글 생성을 먼저 실행해주세요.');
                 return;
             } else {
                 console.error('result.json 파일 읽기 오류:', error.message);
@@ -741,11 +744,8 @@ async function writePost(page, browser) {
         }
 
         // gemini 데이터 확인
-        if (!resultData.gemini || !resultData.gemini.h1 || !resultData.gemini.sections) {
-            console.error('\n❌ result.json에 gemini 데이터가 없습니다.');
-            console.error('📝 다음 명령어를 실행해주세요:');
-            console.error('   node 2.gemini_run.js');
-            console.error('');
+        if (!resultData.gemini || !resultData.gemini.sections || resultData.gemini.sections.length === 0) {
+            console.error('result.json에 글 데이터가 없습니다. 글 생성을 먼저 실행해주세요.');
             return;
         }
 
@@ -1038,8 +1038,9 @@ async function writePost(page, browser) {
 
         // 이미 위에서 작성 중인 글 팝업과 도움말 팝업을 순차적으로 처리했으므로 여기서는 제거
 
-        // 제목 입력 (h1) - 콜론(:) 기호 제거
-        const cleanTitle = resultData.gemini.h1.replace(/:/g, '');
+        // 제목 입력 (h1) - 빈 문자열이면 첫 번째 섹션 h2를 대체 사용, 콜론(:) 제거
+        const rawTitle = resultData.gemini.h1 || (resultData.gemini.sections[0] && resultData.gemini.sections[0].h2) || '제목 없음';
+        const cleanTitle = rawTitle.replace(/:/g, '');
         console.log(`제목 입력: ${cleanTitle}`);
         await frame.waitForSelector('.se-title-text', { timeout: 10000 });
         await frame.click('.se-title-text');
@@ -1054,63 +1055,6 @@ async function writePost(page, browser) {
         await frame.waitForSelector('.se-section-text', { timeout: 10000 });
         await frame.click('.se-section-text');
         await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // 네이버브랜드커넥트 공정위 문구 이미지 추가 (중앙정렬)
-        console.log("네이버브랜드커넥트 공정위 문구 이미지를 추가합니다...");
-
-        // 중앙 정렬 설정
-        await changeAlignment(page, frame, '가운데');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // 이미지 업로드
-        const originalImagePath = path.join(__dirname, 'src', 'nb', '네이버브랜드커넥트공정위문구2.png');
-        if (fs.existsSync(originalImagePath)) {
-            // 랜덤 파일명으로 임시 복사본 생성
-            const randomImagePath = createRandomImageCopy(originalImagePath);
-            console.log(`네이버브랜드커넥트 공정위 문구 이미지 추가: ${randomImagePath}`);
-
-            // 이미지 업로드 시도
-            let uploadSuccess = false;
-            let retryCount = 0;
-            const maxRetries = 3;
-
-            while (!uploadSuccess && retryCount < maxRetries) {
-                try {
-                    await uploadImage(page, frame, randomImagePath);
-
-                    // 파일 전송 오류 팝업 확인 및 처리
-                    await new Promise((resolve) => setTimeout(resolve, 1000));
-                    const errorHandled = await handleFileTransferError(page, frame);
-
-                    if (!errorHandled) {
-                        uploadSuccess = true;
-                        console.log(`✅ 네이버브랜드커넥트 공정위 문구 이미지 업로드 성공`);
-                    } else {
-                        retryCount++;
-                        console.log(`⚠️ 파일 전송 오류 발생, 재시도 ${retryCount}/${maxRetries}`);
-                        await new Promise((resolve) => setTimeout(resolve, 2000)); // 2초 대기 후 재시도
-                    }
-                } catch (error) {
-                    retryCount++;
-                    console.log(`⚠️ 이미지 업로드 오류 (${retryCount}/${maxRetries}): ${error.message}`);
-                    await new Promise((resolve) => setTimeout(resolve, 2000));
-                }
-            }
-
-            if (!uploadSuccess) {
-                console.log(`❌ 네이버브랜드커넥트 공정위 문구 이미지 업로드 실패 (최대 재시도 초과)`);
-            }
-
-            // 임시 복사본 파일 삭제
-            cleanupRandomImageCopy(randomImagePath);
-
-        } else {
-            console.log(`⚠️ 네이버브랜드커넥트 공정위 문구 이미지를 찾을 수 없습니다: ${originalImagePath}`);
-        }
-
-        // 왼쪽 정렬로 되돌리기 (본문 작성을 위해)
-        await changeAlignment(page, frame, '왼쪽');
-        await new Promise((resolve) => setTimeout(resolve, 500));
 
         // 엔터 두 번
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1132,25 +1076,69 @@ async function writePost(page, browser) {
             await new Promise((resolve) => setTimeout(resolve, 100));
         }
 
-        // 각 섹션 처리
-        for (let i = 0; i < resultData.gemini.sections.length; i++) {
-            const section = resultData.gemini.sections[i];
-            // 상품 이미지 처리
-            const selectedProduct = resultData.상품목록.find(p => p.상품ID === resultData.선택된상품ID);
-            const images = selectedProduct ? [
-                selectedProduct.대표이미지URL,
-                ...(selectedProduct.기타이미지URL || [])
-            ] : [];
-            const imageIndex = i % images.length; // 이미지 순환
+        // 이미지 파일 목록 로드
+        const imgsDir = path.join(__dirname, 'imgs');
+        let allImageFiles = [];
+        if (fs.existsSync(imgsDir)) {
+            allImageFiles = fs.readdirSync(imgsDir)
+                .filter(file => file.startsWith('product_') && (file.endsWith('.jpg') || file.endsWith('.png')))
+                .sort((a, b) => {
+                    const numA = parseInt(a.match(/product_(\d+)/)?.[1] || 0);
+                    const numB = parseInt(b.match(/product_(\d+)/)?.[1] || 0);
+                    return numA - numB;
+                });
+        }
 
-            console.log(`\n섹션 ${i + 1} 처리 중...`);
+        // 이미지를 섹션에 고르게 분배 계산
+        // 예: 이미지 7장, 섹션 5개 → [2, 1, 2, 1, 1] 또는 [1, 2, 1, 2, 1]
+        const sectionCount = resultData.gemini.sections.length;
+        const imageAssignment = []; // imageAssignment[i] = 섹션 i에 들어갈 이미지 인덱스 배열
+        for (let i = 0; i < sectionCount; i++) imageAssignment.push([]);
+
+        if (allImageFiles.length > 0 && sectionCount > 0) {
+            for (let imgIdx = 0; imgIdx < allImageFiles.length; imgIdx++) {
+                // 이미지를 섹션에 균등 분배 (라운드로빈)
+                const sectionIdx = Math.floor(imgIdx * sectionCount / allImageFiles.length);
+                imageAssignment[Math.min(sectionIdx, sectionCount - 1)].push(imgIdx);
+            }
+            console.log(`이미지 ${allImageFiles.length}장을 섹션 ${sectionCount}개에 분배: ${imageAssignment.map((a, i) => `섹션${i + 1}=${a.length}장`).join(', ')}`);
+        }
+
+        // 이미지 업로드 헬퍼 함수
+        async function uploadImageWithRetry(page, frame, imagePath) {
+            let uploadSuccess = false;
+            let retryCount = 0;
+            const maxRetries = 3;
+            while (!uploadSuccess && retryCount < maxRetries) {
+                try {
+                    await uploadImage(page, frame, imagePath);
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                    const errorHandled = await handleFileTransferError(page, frame);
+                    if (!errorHandled) {
+                        uploadSuccess = true;
+                    } else {
+                        retryCount++;
+                        console.log(`⚠️ 파일 전송 오류, 재시도 ${retryCount}/${maxRetries}`);
+                        await new Promise((resolve) => setTimeout(resolve, 2000));
+                    }
+                } catch (error) {
+                    retryCount++;
+                    console.log(`⚠️ 이미지 업로드 오류 (${retryCount}/${maxRetries}): ${error.message}`);
+                    await new Promise((resolve) => setTimeout(resolve, 2000));
+                }
+            }
+            return uploadSuccess;
+        }
+
+        // 각 섹션 처리
+        for (let i = 0; i < sectionCount; i++) {
+            const section = resultData.gemini.sections[i];
 
             // 인용구 5 (box) 사용
             await addQuotation(page, frame, 'd');
             await new Promise((resolve) => setTimeout(resolve, 100));
 
             // h2 텍스트 입력 (인용구 안에)
-            console.log(`인용구 5에 입력: ${section.h2}`);
             await typeWithRandomDelay(page, section.h2);
 
             // 인용구 밖으로 나가기 - 아래 화살표 두 번
@@ -1164,119 +1152,33 @@ async function writePost(page, browser) {
             await page.keyboard.press('Enter');
             await new Promise((resolve) => setTimeout(resolve, 500));
 
-            // 이미지 추가 (p 태그 바로 위에)
-            const imgsDir = path.join(__dirname, 'imgs');
-            if (fs.existsSync(imgsDir)) {
-                const imageFiles = fs.readdirSync(imgsDir)
-                    .filter(file => file.startsWith('product_') && (file.endsWith('.jpg') || file.endsWith('.png')))
-                    .sort((a, b) => {
-                        const numA = parseInt(a.match(/product_(\d+)/)?.[1] || 0);
-                        const numB = parseInt(b.match(/product_(\d+)/)?.[1] || 0);
-                        return numA - numB;
-                    });
-
-                // 이미지가 있고, 현재 섹션 인덱스가 이미지 수보다 작을 때만 이미지 추가
-                if (imageFiles.length > 0 && i < imageFiles.length) {
-                    const imagePath = path.join(imgsDir, imageFiles[i]); // 순환 대신 직접 인덱스 사용
-                    console.log(`이미지 추가: ${imagePath}`);
-
-                    // 이미지 업로드 시도
-                    let uploadSuccess = false;
-                    let retryCount = 0;
-                    const maxRetries = 3;
-
-                    while (!uploadSuccess && retryCount < maxRetries) {
-                        try {
-                            await uploadImage(page, frame, imagePath);
-
-                            // 파일 전송 오류 팝업 확인 및 처리
-                            await new Promise((resolve) => setTimeout(resolve, 1000));
-                            const errorHandled = await handleFileTransferError(page, frame);
-
-                            if (!errorHandled) {
-                                uploadSuccess = true;
-                                console.log(`✅ 이미지 업로드 성공: ${imagePath}`);
-                            } else {
-                                retryCount++;
-                                console.log(`⚠️ 파일 전송 오류 발생, 재시도 ${retryCount}/${maxRetries}`);
-                                await new Promise((resolve) => setTimeout(resolve, 2000)); // 2초 대기 후 재시도
-                            }
-                        } catch (error) {
-                            retryCount++;
-                            console.log(`⚠️ 이미지 업로드 오류 (${retryCount}/${maxRetries}): ${error.message}`);
-                            await new Promise((resolve) => setTimeout(resolve, 2000));
-                        }
-                    }
-
-                    if (!uploadSuccess) {
-                        console.log(`❌ 이미지 업로드 실패 (최대 재시도 초과): ${imagePath}`);
-                    } else {
-                        await new Promise((resolve) => setTimeout(resolve, 500));
-                        await page.keyboard.press('Enter');
-                        await new Promise((resolve) => setTimeout(resolve, 100));
-                    }
-                } else if (i >= imageFiles.length) {
-                    console.log(`섹션 ${i + 1}: 이미지 생략 (이미지 수: ${imageFiles.length}, 섹션 수: ${resultData.gemini.sections.length})`);
+            // 이 섹션에 배정된 이미지들 삽입
+            const assignedImages = imageAssignment[i] || [];
+            for (let j = 0; j < assignedImages.length; j++) {
+                const imgIdx = assignedImages[j];
+                const imagePath = path.join(imgsDir, allImageFiles[imgIdx]);
+                const success = await uploadImageWithRetry(page, frame, imagePath);
+                if (success) {
+                    console.log(`  섹션${i + 1} 이미지 삽입: ${allImageFiles[imgIdx]}`);
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                    await page.keyboard.press('Enter');
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                } else {
+                    console.log(`❌ 이미지 업로드 실패: ${allImageFiles[imgIdx]}`);
                 }
             }
 
             // p 내용 입력 (인용구 밖에서)
-            console.log(`본문 내용 입력: ${section.p.substring(0, 50)}...`);
             await typeWithRandomDelay(page, section.p);
 
-
             // 섹션 사이 구분을 위해 엔터 두 번 (마지막 섹션 제외)
-            if (i < resultData.gemini.sections.length - 1) {
+            if (i < sectionCount - 1) {
                 await new Promise((resolve) => setTimeout(resolve, 100));
                 await page.keyboard.press('Enter');
                 await new Promise((resolve) => setTimeout(resolve, 50));
                 await page.keyboard.press('Enter');
                 await new Promise((resolve) => setTimeout(resolve, 100));
             }
-        }
-
-        // 카카오톡 상담 링크 섹션 추가
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        await page.keyboard.press('Enter');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        await page.keyboard.press('Enter');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // 글자 크기를 24로 변경
-        await changeFontSize(page, frame, '24');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // 중앙 정렬 설정
-        await changeAlignment(page, frame, '가운데');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // 상담 텍스트 입력
-        const consultText = "카카오톡 상담 👇";
-        console.log(`상담 텍스트 입력: ${consultText}`);
-        await typeWithRandomDelay(page, consultText);
-
-        // 엔터
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        await page.keyboard.press('Enter');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // 글자 크기를 기본으로 되돌리기
-        await changeFontSize(page, frame, '15');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // 카카오톡 상담 링크 추가 (oglink 모듈 사용)
-        if (KAKAO_LINK) {
-            console.log('카카오톡 상담 링크 추가 중...');
-            console.log('카카오톡 URL:', KAKAO_LINK);
-
-            await addOgLink(page, frame, KAKAO_LINK);
-
-            console.log('링크 썸네일 생성 대기 중...');
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-
-            await page.keyboard.press('Enter');
-        } else {
-            console.log('카카오톡 상담 링크가 설정되지 않았습니다. (KAKAO_LINK 변수를 설정해주세요)');
         }
 
         // USE_VIDEO 옵션에 따라 동영상 추가 (맨 아래에)
@@ -1389,57 +1291,34 @@ async function writePost(page, browser) {
         }
 
 
-        console.log('\n블로그 포스트 작성 완료!');
-        console.log(`제목: ${resultData.gemini.h1}`);
-        console.log(`섹션 수: ${resultData.gemini.sections.length}`);
-        console.log(`선택된 상품: ${resultData.선택된상품명}`);
+        const displayTitle = resultData.gemini.h1 || (resultData.gemini.sections[0] && resultData.gemini.sections[0].h2) || '';
+        console.log(`\n포스팅 완료! 제목: ${displayTitle} | 키워드: ${resultData.키워드 || resultData.선택된상품명 || '-'}`);
 
         // 파일 정리 (imgs 폴더 내용과 result.json 삭제)
         await cleanupFiles();
 
         // 첫 번째 이미지를 제외한 랜덤 이미지를 대표 이미지로 설정 (발행 전)
-        console.log('\n첫 번째 이미지를 제외한 랜덤 이미지를 대표 이미지로 설정합니다...');
+        console.log('\n랜덤 이미지를 대표 이미지로 설정합니다...');
         try {
             await new Promise((resolve) => setTimeout(resolve, 1000));
 
             const repImageSet = await frame.evaluate(() => {
                 const imageComponents = document.querySelectorAll('.se-component.se-image');
-                console.log(`총 이미지 개수: ${imageComponents.length}`);
-
-                // 첫 번째 이미지(네이버브랜드커넥트 공정위 문구)를 제외한 이미지들
-                const availableImages = Array.from(imageComponents).slice(1); // 인덱스 1부터 (두 번째 이미지부터)
-
-                if (availableImages.length === 0) {
-                    console.log('첫 번째 이미지를 제외하면 선택할 수 있는 이미지가 없습니다');
-                    return false;
-                }
+                if (imageComponents.length === 0) return false;
 
                 // 랜덤으로 이미지 선택
-                const randomIndex = Math.floor(Math.random() * availableImages.length);
-                const selectedImage = availableImages[randomIndex];
-                const actualIndex = randomIndex + 1; // 실제 인덱스 (첫 번째 제외했으므로 +1)
-
-                console.log(`첫 번째 이미지를 제외한 ${availableImages.length}개 이미지 중 ${actualIndex + 1}번째 이미지를 랜덤 선택했습니다`);
+                const randomIndex = Math.floor(Math.random() * imageComponents.length);
+                const selectedImage = imageComponents[randomIndex];
 
                 const repButton = selectedImage.querySelector('.se-set-rep-image-button');
-
                 if (repButton) {
-                    // 이미 선택되어 있는지 확인
                     const isAlreadySelected = repButton.classList.contains('se-is-selected');
-                    console.log(`${actualIndex + 1}번째 이미지 대표 버튼 상태: ${isAlreadySelected ? '이미 선택됨' : '선택되지 않음'}`);
-
                     if (!isAlreadySelected) {
                         repButton.click();
-                        console.log(`${actualIndex + 1}번째 이미지 대표 버튼 클릭 완료`);
-                        return { success: true, selectedIndex: actualIndex + 1 };
-                    } else {
-                        console.log(`${actualIndex + 1}번째 이미지가 이미 대표 이미지로 설정되어 있습니다`);
-                        return { success: true, selectedIndex: actualIndex + 1 };
                     }
-                } else {
-                    console.log(`${actualIndex + 1}번째 이미지의 대표 버튼을 찾을 수 없습니다`);
-                    return false;
+                    return { success: true, selectedIndex: randomIndex + 1 };
                 }
+                return false;
             });
 
             if (repImageSet && repImageSet.success) {
@@ -1595,102 +1474,73 @@ async function writePost(page, browser) {
 
                     let finalHour, finalMinute, finalDate;
 
-                    // 예약 발행 선택 (재시도 로직 포함)
-                    let radioExistsFrame = false;
-                    const maxRetries = 3; // 최대 3번 시도
+                    console.log(`📋 발행 모드: ${SCHEDULE_MODE}`);
 
-                    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                        console.log(`예약 발행 선택 시도 ${attempt}/${maxRetries}...`);
-
-                        radioExistsFrame = await frame.evaluate(() => {
-                            const label = document.querySelector('label[for="radio_time2"]');
-                            if (label) {
-                                label.click();
-                                return true;
-                            }
+                    if (SCHEDULE_MODE === 'instant') {
+                        // ===== 즉시발행 모드 =====
+                        // 즉시 발행 라디오 선택 (radio_time1)
+                        const instantSelected = await frame.evaluate(() => {
+                            const label = document.querySelector('label[for="radio_time1"]');
+                            if (label) { label.click(); return true; }
                             return false;
                         });
-
-                        if (radioExistsFrame) {
-                            console.log(`✅ 예약 발행 선택 성공 (${attempt}번째 시도)`);
-                            break;
-                        } else {
-                            console.log(`❌ 예약 발행 선택 실패 (${attempt}번째 시도)`);
-                            if (attempt < maxRetries) {
-                                console.log('2초 후 재시도합니다...');
-                                await new Promise((resolve) => setTimeout(resolve, 2000));
-                            }
+                        if (!instantSelected) {
+                            throw new Error('즉시 발행 선택 실패');
                         }
-                    }
+                        console.log('✅ 즉시 발행 선택 완료');
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
 
-                    if (!radioExistsFrame) {
-                        throw new Error(`예약 발행 선택 실패 (${maxRetries}번 시도 후 포기)`);
-                    }
-
-                    console.log('✅ 예약 발행 선택 완료');
-                    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-                    if (isFirstPost) {
-                        // 1. 첫 발행인 경우: 네이버 기본 설정 시간 추출
-                        const autoSettings = await frame.evaluate(() => {
-                            const hourSelect = document.querySelector('.hour_option__J_heO');
-                            const minuteSelect = document.querySelector('.minute_option__Vb3xB');
-
-                            if (hourSelect && minuteSelect) {
-                                return {
-                                    hour: parseInt(hourSelect.value),
-                                    minute: parseInt(minuteSelect.value)
-                                };
-                            }
-                            return null;
-                        });
-
-                        if (autoSettings) {
-                            finalHour = autoSettings.hour;
-                            finalMinute = autoSettings.minute;
-
-                            // 네이버 기본 설정 시간의 날짜 계산 (현재 시간 + 10분 기준)
-                            const scheduledTime = new Date(kstNow.getTime() + 10 * 60000);
-                            const year = scheduledTime.getFullYear();
-                            const month = String(scheduledTime.getMonth() + 1).padStart(2, '0');
-                            const day = String(scheduledTime.getDate()).padStart(2, '0');
-                            finalDate = `${year}-${month}-${day}`;
-
-                            console.log(`✅ 네이버 기본 설정 시간: ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}, 날짜: ${finalDate}`);
-                        } else {
-                            throw new Error('네이버 기본 설정 시간 추출 실패');
-                        }
-                    } else {
-                        // 2. 2회차 이상인 경우: calculateNextPostTime으로 다음 시간 계산
-                        const postTime = calculateNextPostTime(latestRecords);
-
-                        // calculateNextPostTime에서 반환된 완전한 날짜 시간 객체 사용
-                        const scheduledTime = postTime.scheduledTime;
-
-                        finalHour = postTime.hour;
-                        finalMinute = postTime.minute;
-
-                        // 날짜 문자열 생성
-                        const year = scheduledTime.getFullYear();
-                        const month = String(scheduledTime.getMonth() + 1).padStart(2, '0');
-                        const day = String(scheduledTime.getDate()).padStart(2, '0');
+                        // 현재 KST 시간을 기록용으로 사용
+                        finalHour = kstNow.getHours();
+                        finalMinute = kstNow.getMinutes();
+                        const year = kstNow.getFullYear();
+                        const month = String(kstNow.getMonth() + 1).padStart(2, '0');
+                        const day = String(kstNow.getDate()).padStart(2, '0');
                         finalDate = `${year}-${month}-${day}`;
 
-                        const isNextDay = scheduledTime.getDate() !== kstNow.getDate() ||
-                            scheduledTime.getMonth() !== kstNow.getMonth() ||
-                            scheduledTime.getFullYear() !== kstNow.getFullYear();
+                    } else if (SCHEDULE_MODE === 'manual') {
+                        // ===== 직접지정 모드 =====
+                        // 예약 발행 라디오 선택 (radio_time2)
+                        let radioExistsFrame = false;
+                        const maxRetries = 3;
+                        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                            console.log(`예약 발행 선택 시도 ${attempt}/${maxRetries}...`);
+                            radioExistsFrame = await frame.evaluate(() => {
+                                const label = document.querySelector('label[for="radio_time2"]');
+                                if (label) { label.click(); return true; }
+                                return false;
+                            });
+                            if (radioExistsFrame) {
+                                console.log(`✅ 예약 발행 선택 성공 (${attempt}번째 시도)`);
+                                break;
+                            } else {
+                                console.log(`❌ 예약 발행 선택 실패 (${attempt}번째 시도)`);
+                                if (attempt < maxRetries) await new Promise((resolve) => setTimeout(resolve, 2000));
+                            }
+                        }
+                        if (!radioExistsFrame) throw new Error(`예약 발행 선택 실패 (${maxRetries}번 시도 후 포기)`);
+                        console.log('✅ 예약 발행 선택 완료');
+                        await new Promise((resolve) => setTimeout(resolve, 2000));
 
-                        console.log(`✅ 계산된 다음 발행 시간: ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')} ${isNextDay ? '(다음날)' : '(오늘)'}`);
+                        // 환경변수에서 직접 지정된 시간 사용
+                        finalHour = parseInt(SCHEDULE_HOUR) || kstNow.getHours();
+                        finalMinute = parseInt(SCHEDULE_MINUTE) || 0;
+                        finalDate = SCHEDULE_DATE || `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`;
+
+                        console.log(`📅 직접 지정 발행 시간: ${finalDate} ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}`);
 
                         // 날짜 변경이 필요한 경우
-                        if (isNextDay) {
-                            console.log(`날짜를 변경합니다: ${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')} → ${String(scheduledTime.getFullYear())}-${String(scheduledTime.getMonth() + 1).padStart(2, '0')}-${String(scheduledTime.getDate()).padStart(2, '0')}`);
+                        const manualParts = finalDate.split('-');
+                        const manualYear = parseInt(manualParts[0]);
+                        const manualMonth = parseInt(manualParts[1]) - 1;
+                        const manualDay = parseInt(manualParts[2]);
+                        const isManualNextDay = manualDay !== kstNow.getDate() || manualMonth !== kstNow.getMonth() || manualYear !== kstNow.getFullYear();
 
-                            // 달력 열기
+                        if (isManualNextDay) {
+                            console.log(`날짜를 변경합니다: → ${finalDate}`);
                             await frame.click('.input_date__QmA0s');
                             await new Promise(resolve => setTimeout(resolve, 1500));
 
-                            // 달력이 열린 후 현재 달력의 월 확인
                             const initialCalendarState = await frame.evaluate(() => {
                                 const monthSpan = document.querySelector('.ui-datepicker-month');
                                 const yearSpan = document.querySelector('.ui-datepicker-year');
@@ -1699,130 +1549,297 @@ async function writePost(page, browser) {
                                     year: yearSpan ? yearSpan.textContent : null
                                 };
                             });
-                            console.log(`📅 달력 초기 상태: ${initialCalendarState.year} ${initialCalendarState.month}`);
 
-                            const targetDate = scheduledTime.getDate();
-                            const targetYear = scheduledTime.getFullYear();
-                            const targetMonth = scheduledTime.getMonth();
+                            const calendarMonth = initialCalendarState.month ? parseInt(initialCalendarState.month.replace('월', '')) - 1 : kstNow.getMonth();
+                            const calendarYear = initialCalendarState.year ? parseInt(initialCalendarState.year.replace('년', '')) : kstNow.getFullYear();
 
-                            // 실제 달력에 표시된 월을 파싱해서 사용 (한국어 "9월" → 숫자 8)
-                            const calendarMonth = initialCalendarState.month ?
-                                parseInt(initialCalendarState.month.replace('월', '')) - 1 : // "9월" → 8
-                                kstNow.getMonth(); // fallback
-                            const calendarYear = initialCalendarState.year ?
-                                parseInt(initialCalendarState.year.replace('년', '')) : // "2025년" → 2025
-                                kstNow.getFullYear(); // fallback
-
-                            console.log(`🎯 목표: ${targetYear}년 ${targetMonth + 1}월 ${targetDate}일`);
-                            console.log(`📍 달력 현재: ${calendarYear}년 ${calendarMonth + 1}월`);
-
-                            // 실제 달력 표시 월을 기준으로 계산
                             let monthsToMove = 0;
-                            if (targetYear > calendarYear) {
-                                // 다음 연도인 경우
-                                monthsToMove = (12 - calendarMonth - 1) + targetMonth + 1;
-                                console.log(`📊 연도 넘김: ${calendarYear} → ${targetYear}, 이동할 월 수: ${monthsToMove}`);
-                            } else if (targetYear === calendarYear) {
-                                // 같은 연도 내에서 월 비교
-                                monthsToMove = targetMonth - calendarMonth;
-                                console.log(`📊 같은 연도 내: ${calendarMonth + 1}월 → ${targetMonth + 1}월, 이동할 월 수: ${monthsToMove}`);
-                            } else if (targetYear < calendarYear) {
-                                // 이전 연도인 경우 (거의 없지만 혹시)
-                                console.log(`⚠️ 경고: 목표 연도가 달력 현재 연도보다 이전입니다!`);
-                                monthsToMove = 0; // 안전하게 0으로 설정
+                            if (manualYear > calendarYear) {
+                                monthsToMove = (12 - calendarMonth - 1) + manualMonth + 1;
+                            } else if (manualYear === calendarYear) {
+                                monthsToMove = manualMonth - calendarMonth;
                             }
 
-                            console.log(`📋 최종 계산: ${monthsToMove}개월 이동 필요`);
-
-                            // 필요한 만큼 다음달 버튼 클릭 (안전하게 한 번에 하나씩)
                             for (let i = 0; i < monthsToMove; i++) {
-                                console.log(`다음달 버튼 클릭 ${i + 1}/${monthsToMove}`);
-
-                                // 버튼이 존재하는지 확인 후 클릭
                                 const nextButtonExists = await frame.evaluate(() => {
                                     const btn = document.querySelector('.ui-datepicker-next');
                                     return btn && !btn.disabled && btn.style.visibility !== 'hidden';
                                 });
-
                                 if (nextButtonExists) {
                                     await frame.click('.ui-datepicker-next');
-                                    await new Promise(resolve => setTimeout(resolve, 800)); // 각 클릭 후 충분한 대기
-
-                                    // 실제로 달력이 변경되었는지 확인
-                                    const currentCalendarMonth = await frame.evaluate(() => {
-                                        const monthSpan = document.querySelector('.ui-datepicker-month');
-                                        return monthSpan ? monthSpan.textContent : null;
-                                    });
-                                    console.log(`현재 달력 월: ${currentCalendarMonth}`);
-                                } else {
-                                    console.log('⚠️ 다음달 버튼을 찾을 수 없거나 비활성화됨');
-                                    break;
-                                }
+                                    await new Promise(resolve => setTimeout(resolve, 800));
+                                } else break;
                             }
 
-                            // 추가 대기 후 날짜 선택
                             await new Promise(resolve => setTimeout(resolve, 1000));
-
-                            // 목표 날짜 클릭
-                            const dateClicked = await frame.evaluate((date) => {
+                            await frame.evaluate((date) => {
                                 const dateButtons = document.querySelectorAll('.ui-datepicker td:not(.ui-state-disabled) button');
-                                console.log(`사용 가능한 날짜 버튼 수: ${dateButtons.length}`);
-
                                 for (const btn of dateButtons) {
-                                    if (btn.textContent.trim() === String(date)) {
-                                        console.log(`날짜 ${date}일 버튼 찾음, 클릭 시도`);
-                                        btn.click();
-                                        return true;
-                                    }
+                                    if (btn.textContent.trim() === String(date)) { btn.click(); return true; }
                                 }
                                 return false;
-                            }, targetDate);
-
-                            if (dateClicked) {
-                                console.log(`✅ 날짜 ${targetDate}일 선택 완료`);
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                            } else {
-                                console.log(`⚠️ 날짜 ${targetDate}일 선택 실패 - 해당 날짜를 찾을 수 없습니다`);
-                            }
+                            }, manualDay);
+                            await new Promise(resolve => setTimeout(resolve, 1000));
                         }
 
                         // 시간과 분 설정
-                        const hourSet = await frame.evaluate((hour) => {
+                        await frame.evaluate((hour) => {
                             const hourSelect = document.querySelector('.hour_option__J_heO');
-                            if (hourSelect) {
-                                hourSelect.value = String(hour).padStart(2, '0');
-                                hourSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                                return true;
-                            }
-                            return false;
+                            if (hourSelect) { hourSelect.value = String(hour).padStart(2, '0'); hourSelect.dispatchEvent(new Event('change', { bubbles: true })); }
                         }, finalHour);
-
-                        const minuteSet = await frame.evaluate((minute) => {
+                        await frame.evaluate((minute) => {
                             const minuteSelect = document.querySelector('.minute_option__Vb3xB');
-                            if (minuteSelect) {
-                                minuteSelect.value = String(minute).padStart(2, '0');
-                                minuteSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                                return true;
-                            }
-                            return false;
+                            if (minuteSelect) { minuteSelect.value = String(minute).padStart(2, '0'); minuteSelect.dispatchEvent(new Event('change', { bubbles: true })); }
                         }, finalMinute);
 
-                        if (!hourSet || !minuteSet) {
-                            throw new Error('시간 설정 실패');
+                        console.log(`✅ 직접 지정 시간 설정 완료: ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}`);
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+                    } else {
+                        // ===== 자동계산 모드 (기존 로직) =====
+                        // 예약 발행 선택 (재시도 로직 포함)
+                        let radioExistsFrame = false;
+                        const maxRetries = 3;
+
+                        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                            console.log(`예약 발행 선택 시도 ${attempt}/${maxRetries}...`);
+
+                            radioExistsFrame = await frame.evaluate(() => {
+                                const label = document.querySelector('label[for="radio_time2"]');
+                                if (label) {
+                                    label.click();
+                                    return true;
+                                }
+                                return false;
+                            });
+
+                            if (radioExistsFrame) {
+                                console.log(`✅ 예약 발행 선택 성공 (${attempt}번째 시도)`);
+                                break;
+                            } else {
+                                console.log(`❌ 예약 발행 선택 실패 (${attempt}번째 시도)`);
+                                if (attempt < maxRetries) {
+                                    console.log('2초 후 재시도합니다...');
+                                    await new Promise((resolve) => setTimeout(resolve, 2000));
+                                }
+                            }
                         }
 
-                        console.log(`✅ 예약 시간 설정 완료: ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}`);
-                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                        if (!radioExistsFrame) {
+                            throw new Error(`예약 발행 선택 실패 (${maxRetries}번 시도 후 포기)`);
+                        }
+
+                        console.log('✅ 예약 발행 선택 완료');
+                        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+                        if (isFirstPost) {
+                            // 1. 첫 발행인 경우: 네이버 기본 설정 시간 추출
+                            const autoSettings = await frame.evaluate(() => {
+                                const hourSelect = document.querySelector('.hour_option__J_heO');
+                                const minuteSelect = document.querySelector('.minute_option__Vb3xB');
+
+                                if (hourSelect && minuteSelect) {
+                                    return {
+                                        hour: parseInt(hourSelect.value),
+                                        minute: parseInt(minuteSelect.value)
+                                    };
+                                }
+                                return null;
+                            });
+
+                            if (autoSettings) {
+                                finalHour = autoSettings.hour;
+                                finalMinute = autoSettings.minute;
+
+                                // 네이버 기본 설정 시간의 날짜 계산 (현재 시간 + 10분 기준)
+                                const scheduledTime = new Date(kstNow.getTime() + 10 * 60000);
+                                const year = scheduledTime.getFullYear();
+                                const month = String(scheduledTime.getMonth() + 1).padStart(2, '0');
+                                const day = String(scheduledTime.getDate()).padStart(2, '0');
+                                finalDate = `${year}-${month}-${day}`;
+
+                                console.log(`✅ 네이버 기본 설정 시간: ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}, 날짜: ${finalDate}`);
+                            } else {
+                                throw new Error('네이버 기본 설정 시간 추출 실패');
+                            }
+                        } else {
+                            // 2. 2회차 이상인 경우: calculateNextPostTime으로 다음 시간 계산
+                            const postTime = calculateNextPostTime(latestRecords);
+
+                            // calculateNextPostTime에서 반환된 완전한 날짜 시간 객체 사용
+                            const scheduledTime = postTime.scheduledTime;
+
+                            finalHour = postTime.hour;
+                            finalMinute = postTime.minute;
+
+                            // 날짜 문자열 생성
+                            const year = scheduledTime.getFullYear();
+                            const month = String(scheduledTime.getMonth() + 1).padStart(2, '0');
+                            const day = String(scheduledTime.getDate()).padStart(2, '0');
+                            finalDate = `${year}-${month}-${day}`;
+
+                            const isNextDay = scheduledTime.getDate() !== kstNow.getDate() ||
+                                scheduledTime.getMonth() !== kstNow.getMonth() ||
+                                scheduledTime.getFullYear() !== kstNow.getFullYear();
+
+                            console.log(`✅ 계산된 다음 발행 시간: ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')} ${isNextDay ? '(다음날)' : '(오늘)'}`);
+
+                            // 날짜 변경이 필요한 경우
+                            if (isNextDay) {
+                                console.log(`날짜를 변경합니다: ${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')} → ${String(scheduledTime.getFullYear())}-${String(scheduledTime.getMonth() + 1).padStart(2, '0')}-${String(scheduledTime.getDate()).padStart(2, '0')}`);
+
+                                // 달력 열기
+                                await frame.click('.input_date__QmA0s');
+                                await new Promise(resolve => setTimeout(resolve, 1500));
+
+                                // 달력이 열린 후 현재 달력의 월 확인
+                                const initialCalendarState = await frame.evaluate(() => {
+                                    const monthSpan = document.querySelector('.ui-datepicker-month');
+                                    const yearSpan = document.querySelector('.ui-datepicker-year');
+                                    return {
+                                        month: monthSpan ? monthSpan.textContent : null,
+                                        year: yearSpan ? yearSpan.textContent : null
+                                    };
+                                });
+                                console.log(`📅 달력 초기 상태: ${initialCalendarState.year} ${initialCalendarState.month}`);
+
+                                const targetDate = scheduledTime.getDate();
+                                const targetYear = scheduledTime.getFullYear();
+                                const targetMonth = scheduledTime.getMonth();
+
+                                // 실제 달력에 표시된 월을 파싱해서 사용 (한국어 "9월" → 숫자 8)
+                                const calendarMonth = initialCalendarState.month ?
+                                    parseInt(initialCalendarState.month.replace('월', '')) - 1 : // "9월" → 8
+                                    kstNow.getMonth(); // fallback
+                                const calendarYear = initialCalendarState.year ?
+                                    parseInt(initialCalendarState.year.replace('년', '')) : // "2025년" → 2025
+                                    kstNow.getFullYear(); // fallback
+
+                                console.log(`🎯 목표: ${targetYear}년 ${targetMonth + 1}월 ${targetDate}일`);
+                                console.log(`📍 달력 현재: ${calendarYear}년 ${calendarMonth + 1}월`);
+
+                                // 실제 달력 표시 월을 기준으로 계산
+                                let monthsToMove = 0;
+                                if (targetYear > calendarYear) {
+                                    // 다음 연도인 경우
+                                    monthsToMove = (12 - calendarMonth - 1) + targetMonth + 1;
+                                    console.log(`📊 연도 넘김: ${calendarYear} → ${targetYear}, 이동할 월 수: ${monthsToMove}`);
+                                } else if (targetYear === calendarYear) {
+                                    // 같은 연도 내에서 월 비교
+                                    monthsToMove = targetMonth - calendarMonth;
+                                    console.log(`📊 같은 연도 내: ${calendarMonth + 1}월 → ${targetMonth + 1}월, 이동할 월 수: ${monthsToMove}`);
+                                } else if (targetYear < calendarYear) {
+                                    // 이전 연도인 경우 (거의 없지만 혹시)
+                                    console.log(`⚠️ 경고: 목표 연도가 달력 현재 연도보다 이전입니다!`);
+                                    monthsToMove = 0; // 안전하게 0으로 설정
+                                }
+
+                                console.log(`📋 최종 계산: ${monthsToMove}개월 이동 필요`);
+
+                                // 필요한 만큼 다음달 버튼 클릭 (안전하게 한 번에 하나씩)
+                                for (let i = 0; i < monthsToMove; i++) {
+                                    console.log(`다음달 버튼 클릭 ${i + 1}/${monthsToMove}`);
+
+                                    // 버튼이 존재하는지 확인 후 클릭
+                                    const nextButtonExists = await frame.evaluate(() => {
+                                        const btn = document.querySelector('.ui-datepicker-next');
+                                        return btn && !btn.disabled && btn.style.visibility !== 'hidden';
+                                    });
+
+                                    if (nextButtonExists) {
+                                        await frame.click('.ui-datepicker-next');
+                                        await new Promise(resolve => setTimeout(resolve, 800)); // 각 클릭 후 충분한 대기
+
+                                        // 실제로 달력이 변경되었는지 확인
+                                        const currentCalendarMonth = await frame.evaluate(() => {
+                                            const monthSpan = document.querySelector('.ui-datepicker-month');
+                                            return monthSpan ? monthSpan.textContent : null;
+                                        });
+                                        console.log(`현재 달력 월: ${currentCalendarMonth}`);
+                                    } else {
+                                        console.log('⚠️ 다음달 버튼을 찾을 수 없거나 비활성화됨');
+                                        break;
+                                    }
+                                }
+
+                                // 추가 대기 후 날짜 선택
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                                // 목표 날짜 클릭
+                                const dateClicked = await frame.evaluate((date) => {
+                                    const dateButtons = document.querySelectorAll('.ui-datepicker td:not(.ui-state-disabled) button');
+                                    console.log(`사용 가능한 날짜 버튼 수: ${dateButtons.length}`);
+
+                                    for (const btn of dateButtons) {
+                                        if (btn.textContent.trim() === String(date)) {
+                                            console.log(`날짜 ${date}일 버튼 찾음, 클릭 시도`);
+                                            btn.click();
+                                            return true;
+                                        }
+                                    }
+                                    return false;
+                                }, targetDate);
+
+                                if (dateClicked) {
+                                    console.log(`✅ 날짜 ${targetDate}일 선택 완료`);
+                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                } else {
+                                    console.log(`⚠️ 날짜 ${targetDate}일 선택 실패 - 해당 날짜를 찾을 수 없습니다`);
+                                }
+                            }
+
+                            // 시간과 분 설정
+                            const hourSet = await frame.evaluate((hour) => {
+                                const hourSelect = document.querySelector('.hour_option__J_heO');
+                                if (hourSelect) {
+                                    hourSelect.value = String(hour).padStart(2, '0');
+                                    hourSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                                    return true;
+                                }
+                                return false;
+                            }, finalHour);
+
+                            const minuteSet = await frame.evaluate((minute) => {
+                                const minuteSelect = document.querySelector('.minute_option__Vb3xB');
+                                if (minuteSelect) {
+                                    minuteSelect.value = String(minute).padStart(2, '0');
+                                    minuteSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                                    return true;
+                                }
+                                return false;
+                            }, finalMinute);
+
+                            if (!hourSet || !minuteSet) {
+                                throw new Error('시간 설정 실패');
+                            }
+
+                            console.log(`✅ 예약 시간 설정 완료: ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}`);
+                            await new Promise((resolve) => setTimeout(resolve, 1000));
+                        }
                     }
 
-                    // 3. 최종 발행 기록 저장 (한 번만 저장)
-                    savePostedRecord(POST_ID, finalHour, finalMinute, finalDate);
-                    console.log(`발행 기록 저장 완료: ${finalDate} ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}`);
-
-                    // 4. 최종 발행 버튼 클릭
+                    // 3. 최종 발행 버튼 클릭
                     await frame.waitForSelector('button[data-testid="seOnePublishBtn"]', { timeout: 3000 });
                     await frame.click('button[data-testid="seOnePublishBtn"]');
                     console.log('✅ 발행 완료!');
+
+                    // 4. URL 캡처 시도
+                    let capturedUrl = '';
+                    try {
+                        // 발행 후 리다이렉트 대기
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        const currentUrl = page.url();
+                        if (currentUrl && currentUrl.includes('blog.naver.com')) {
+                            capturedUrl = currentUrl;
+                            console.log(`🔗 포스팅 URL 캡처: ${capturedUrl}`);
+                        }
+                    } catch (urlError) {
+                        console.log('URL 캡처 실패 (무시됨):', urlError.message);
+                    }
+
+                    // 5. 최종 발행 기록 저장 (한 번만 저장)
+                    savePostedRecord(POST_ID, finalHour, finalMinute, finalDate, capturedUrl);
+                    console.log(`발행 기록 저장 완료: ${finalDate} ${String(finalHour).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}${capturedUrl ? ' URL: ' + capturedUrl : ''}`);
 
                     // 발행 처리 완료 대기 (5~7초 랜덤)
                     const waitTime = Math.floor(Math.random() * 2000) + 5000; // 5000~7000ms 랜덤
@@ -2066,11 +2083,16 @@ async function visitNaver() {
         ],
     });
 
+    // 정상 종료 플래그
+    let isShuttingDown = false;
+
     // 브라우저 종료 감지 이벤트 리스너 추가
-    // 브라우저가 종료되면 스크립트도 종료
+    // 사용자가 브라우저를 수동으로 닫았을 때만 process.exit
     browser.on('disconnected', () => {
-        console.log('브라우저가 종료되었습니다. 프로그램을 종료합니다.');
-        process.exit(0);
+        if (!isShuttingDown) {
+            console.log('브라우저가 종료되었습니다. 프로그램을 종료합니다.');
+            process.exit(0);
+        }
     });
 
     try {
@@ -2078,8 +2100,10 @@ async function visitNaver() {
 
         // 페이지가 닫히면 브라우저도 종료
         page.on('close', () => {
-            console.log('페이지가 닫혔습니다. 브라우저를 종료합니다.');
-            browser.close().catch(() => { });
+            if (!isShuttingDown) {
+                console.log('페이지가 닫혔습니다. 브라우저를 종료합니다.');
+                browser.close().catch(() => { });
+            }
         });
 
         // 자동화 탐지 우회 스크립트 주입
@@ -2423,43 +2447,29 @@ async function visitNaver() {
         }
 
         // 모든 작업이 완료되었으므로 프로그램을 종료합니다
-        console.log("모든 작업이 완료되었습니다. 프로그램을 종료합니다.");
+        console.log("모든 작업이 완료되었습니다.");
+        isShuttingDown = true;
 
-        // 브라우저 종료 및 프로그램 종료
         try {
-            await browser.close();
-            console.log('브라우저가 정상적으로 종료되었습니다.');
-        } catch (closeError) {
-            console.log('브라우저 종료 중 오류 (무시됨):', closeError.message);
-        }
+            if (browser.isConnected()) await browser.close();
+        } catch (e) { /* 무시 */ }
 
-        // 프로그램 종료
         process.exit(0);
 
     } catch (error) {
-        console.error("오류 발생:", error);
-        // 오류 발생 시에도 브라우저 종료 및 프로그램 강제 종료
+        console.error("오류 발생:", error.message || error);
+        isShuttingDown = true;
+
         try {
-            await browser.close();
-            console.log('브라우저가 정상적으로 종료되었습니다.');
-        } catch (closeError) {
-            console.log('브라우저 종료 중 오류 (무시됨):', closeError.message);
-        }
+            if (browser.isConnected()) await browser.close();
+        } catch (e) { /* 무시 */ }
 
-        // 강제 종료를 위해 추가 대기 후 프로세스 종료
-        console.log('5초 후 프로그램을 강제 종료합니다...');
-        setTimeout(() => {
-            console.log('프로그램을 강제 종료합니다.');
-            process.exit(1);
-        }, 5000);
-
-        // 즉시 종료도 시도
         process.exit(1);
     } finally {
-        // 브라우저가 아직 연결되어 있다면 종료
-        if (browser.isConnected()) {
-            await browser.close();
-        }
+        isShuttingDown = true;
+        try {
+            if (browser.isConnected()) await browser.close();
+        } catch (e) { /* 무시 */ }
 
         // 임시 디렉토리 삭제
         try {
@@ -2507,9 +2517,26 @@ async function cleanupFiles() {
             console.log('result.json 파일이 존재하지 않습니다.');
         }
 
-        // 3. 동영상 파일 삭제 (있는 경우)
-        const files = fs.readdirSync(__dirname);
-        const videoFiles = files.filter(file => file.endsWith('_slideshow.mp4'));
+        // 3. 루트 폴더의 img_*.png, result_*.txt 파일 삭제
+        const allFiles = fs.readdirSync(__dirname);
+        const generatedFiles = allFiles.filter(f =>
+            (f.startsWith('img_') && f.endsWith('.png')) ||
+            (f.startsWith('result_') && f.endsWith('.txt'))
+        );
+        for (const file of generatedFiles) {
+            try {
+                fs.unlinkSync(path.join(__dirname, file));
+                console.log(`삭제됨: ${file}`);
+            } catch (err) {
+                console.error(`${file} 삭제 실패:`, err.message);
+            }
+        }
+        if (generatedFiles.length > 0) {
+            console.log(`루트 생성 파일 ${generatedFiles.length}개 정리 완료`);
+        }
+
+        // 4. 동영상 파일 삭제 (있는 경우)
+        const videoFiles = allFiles.filter(file => file.endsWith('_slideshow.mp4'));
         for (const videoFile of videoFiles) {
             const videoPath = path.join(__dirname, videoFile);
             try {
