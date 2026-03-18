@@ -293,9 +293,10 @@ ${deduplicationPrompt}`;
                 });
                 break;
             } catch (e) {
-                if (e.status === 503 && attempt < maxTextRetries) {
+                const status = e.status || e.httpCode || 0;
+                if ((status === 429 || status >= 500) && attempt < maxTextRetries) {
                     const waitSec = attempt * 15;
-                    console.log(`⚠ 서버 과부하 (503). ${waitSec}초 후 재시도... (${attempt}/${maxTextRetries})`);
+                    console.log(`⚠ API 오류 (${status}). ${waitSec}초 후 재시도... (${attempt}/${maxTextRetries})`);
                     await new Promise(r => setTimeout(r, waitSec * 1000));
                 } else {
                     throw e;
@@ -305,7 +306,7 @@ ${deduplicationPrompt}`;
         const responseText = result.text;
 
         // 재시도 포함 단일 이미지 생성 함수 (새 SDK 방식)
-        async function generateSingleImage(ai, prompt, maxRetries = 3) {
+        async function generateSingleImage(ai, prompt, maxRetries = 5) {
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
                     const imageResult = await ai.models.generateContent({
@@ -322,9 +323,11 @@ ${deduplicationPrompt}`;
                     if (imagePart) return imagePart;
                     console.log(`  [시도 ${attempt}/${maxRetries}] 이미지를 반환하지 않았습니다.`);
                 } catch (err) {
-                    console.log(`  [시도 ${attempt}/${maxRetries}] 오류: ${err.message}`);
+                    const status = err.status || err.httpCode || 0;
+                    console.log(`  [시도 ${attempt}/${maxRetries}] 오류 (${status}): ${err.message}`);
                     if (attempt < maxRetries) {
-                        const waitSec = attempt * 5;
+                        // 500/503/429 에러는 더 오래 대기
+                        const waitSec = (status === 429 || status >= 500) ? attempt * 15 : attempt * 5;
                         console.log(`  -> ${waitSec}초 후 재시도합니다...`);
                         await new Promise(r => setTimeout(r, waitSec * 1000));
                     }
@@ -441,6 +444,7 @@ ${imageDeduplicationNote}
                         .toFile(imgPath);
                     console.log(`[완료] ${myIndex}번째 이미지 저장 (Anti-Detection + 오버레이): ${imgFilename}`);
                 } catch (processErr) {
+                    console.log(`  ⚠️ Anti-Detection/오버레이 오류: ${processErr.message}`);
                     // Anti-Detection 실패 시 원본으로 폴백
                     try {
                         const baseMeta = await sharp(rawBuffer).metadata();
@@ -451,6 +455,7 @@ ${imageDeduplicationNote}
                             .toFile(imgPath);
                         console.log(`[완료] ${myIndex}번째 이미지 저장 (오버레이만): ${imgFilename}`);
                     } catch (overlayErr) {
+                        console.log(`  ⚠️ 오버레이 폴백도 실패: ${overlayErr.message}`);
                         fs.writeFileSync(imgPath, rawBuffer);
                         console.log(`[완료] ${myIndex}번째 이미지 저장 (원본): ${imgFilename}`);
                     }
@@ -462,9 +467,9 @@ ${imageDeduplicationNote}
 
             replacements.push(replacementStr);
 
-            // 다음 이미지 생성 전 2초 대기 (API 부하 방지)
+            // 다음 이미지 생성 전 5초 대기 (API rate limit 방지)
             if (i < matches.length - 1) {
-                await new Promise(r => setTimeout(r, 2000));
+                await new Promise(r => setTimeout(r, 5000));
             }
         }
 
@@ -503,13 +508,13 @@ ${imageDeduplicationNote}
 
         for (const line of lines) {
             const trimmed = line.trim();
-            // 제목: 첫 번째 heading을 h1으로 사용 (#, ##, ### 모두 허용)
-            if (trimmed.match(/^#{1,3}\s+/) && !h1) {
+            // 제목: 첫 번째 heading을 h1으로 사용 (#, ##, ###, #### 모두 허용)
+            if (trimmed.match(/^#{1,6}\s+/) && !h1) {
                 h1 = trimmed.replace(/^#+\s*/, '').replace(/\*\*/g, '').replace(/^제목[:\s：]*/, '');
                 continue;
             }
-            // 소제목 (## 또는 ###)
-            if (trimmed.match(/^#{2,3}\s+/)) {
+            // 소제목 (#, ##, ###, #### 모두 허용 - h1 이후의 모든 heading)
+            if (trimmed.match(/^#{1,6}\s+/)) {
                 if (currentSection) sections.push(currentSection);
                 currentSection = {
                     h2: trimmed.replace(/^#+\s*/, '').replace(/\*\*/g, ''),
@@ -520,7 +525,7 @@ ${imageDeduplicationNote}
             // 이미지 라인 스킵
             if (trimmed.startsWith('![')) continue;
             // 해시태그 라인 스킵 (# 으로 시작하지만 heading이 아닌 경우)
-            if (trimmed.startsWith('#') && !trimmed.match(/^#{1,3}\s+/)) continue;
+            if (trimmed.startsWith('#') && !trimmed.match(/^#{1,6}\s+/)) continue;
             // 구분선 스킵
             if (trimmed === '---' || trimmed === '***') continue;
             // undefined 스킵
@@ -536,6 +541,21 @@ ${imageDeduplicationNote}
             }
         }
         if (currentSection) sections.push(currentSection);
+
+        // 섹션이 하나도 없는 경우: 본문 전체를 하나의 섹션으로 만듦
+        if (sections.length === 0) {
+            console.log('⚠️ 마크다운에서 소제목을 감지하지 못했습니다. 본문 전체를 하나의 섹션으로 구성합니다.');
+            const bodyText = lines
+                .map(l => l.trim())
+                .filter(l => !l.match(/^#{1,6}\s+/) && !l.startsWith('![') && !l.startsWith('#') && l !== '---' && l !== '***' && l !== 'undefined')
+                .map(l => l.replace(/\*\*/g, ''))
+                .filter(l => l.length > 0)
+                .join('\n');
+            sections.push({
+                h2: h1 || randomKeyword,
+                p: bodyText || h3 || randomKeyword
+            });
+        }
 
         // Gemini에게 블로그 제목 별도 생성 요청
         console.log('블로그 제목을 생성하는 중...');

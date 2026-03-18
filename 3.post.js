@@ -744,9 +744,17 @@ async function writePost(page, browser) {
         }
 
         // gemini 데이터 확인
-        if (!resultData.gemini || !resultData.gemini.sections || resultData.gemini.sections.length === 0) {
+        if (!resultData.gemini) {
             console.error('result.json에 글 데이터가 없습니다. 글 생성을 먼저 실행해주세요.');
             return;
+        }
+        // sections가 비어있으면 h1/h3으로 기본 섹션 생성
+        if (!resultData.gemini.sections || resultData.gemini.sections.length === 0) {
+            console.log('⚠️ sections가 비어있습니다. 기본 섹션을 자동 생성합니다.');
+            resultData.gemini.sections = [{
+                h2: resultData.gemini.h1 || resultData.gemini.키워드 || '본문',
+                p: resultData.gemini.h3 || ''
+            }];
         }
 
         // iframe이 로드될 때까지 대기

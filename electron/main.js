@@ -132,11 +132,17 @@ ipcMain.handle('script:generate', (event) => {
 
 function isResultValid() {
     const resultPath = path.join(__dirname, '..', 'result.json');
+    console.log('[DEBUG] result.json 경로:', resultPath);
+    console.log('[DEBUG] 파일 존재:', fs.existsSync(resultPath));
     try {
-        const data = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
-        // h1이 있거나, sections에 데이터가 있으면 유효
-        return !!(data.gemini && data.gemini.sections && data.gemini.sections.length > 0);
+        const raw = fs.readFileSync(resultPath, 'utf-8');
+        const data = JSON.parse(raw);
+        // gemini 객체와 h1(제목)이 있으면 유효한 것으로 판단
+        const valid = !!(data.gemini && (data.gemini.h1 || (data.gemini.sections && data.gemini.sections.length > 0)));
+        console.log('[DEBUG] result.json 유효:', valid, '| h1:', data.gemini?.h1 || 'none', '| sections:', data.gemini?.sections?.length || 0);
+        return valid;
     } catch (e) {
+        console.log('[DEBUG] result.json 읽기 실패:', e.message);
         return false;
     }
 }
@@ -152,10 +158,10 @@ ipcMain.handle('script:post', (event) => {
                 // 중간 단계에서는 script:done을 프론트엔드로 보내지 않음 (로그만 전달)
                 if (channel === 'script:done') {
                     if (isResultValid()) {
-                        sender.send('script:log', { type: 'info', data: '\n글 생성 완료! 포스팅을 시작합니다...\n' });
+                        sender.send('script:log', { type: 'info', data: '\n글 생성 완료! 5초 후 포스팅을 시작합니다...\n' });
                         setTimeout(() => {
                             runScript('3.post.js', config, sender);
-                        }, 1000);
+                        }, 5000);
                     } else {
                         sender.send('script:log', { type: 'stderr', data: '\n글 생성에 실패했습니다. 포스팅을 중단합니다.\n' });
                         sender.send('script:done', { code: 1, script: '3.post.js' });
@@ -197,10 +203,10 @@ ipcMain.handle('script:auto', (event) => {
         send: (channel, data) => {
             if (channel === 'script:done') {
                 if (isResultValid()) {
-                    sender.send('script:log', { type: 'info', data: '\n자동 모드: 글 생성 완료! 포스팅 시작...\n' });
+                    sender.send('script:log', { type: 'info', data: '\n자동 모드: 글 생성 완료! 5초 후 포스팅 시작...\n' });
                     setTimeout(() => {
                         runScript('3.post.js', config, sender);
-                    }, 1000);
+                    }, 5000);
                 } else {
                     sender.send('script:log', { type: 'stderr', data: '\n글 생성에 실패했습니다. 포스팅을 중단합니다.\n' });
                     sender.send('script:done', { code: 1, script: '3.post.js' });
