@@ -1074,12 +1074,19 @@ async function writePost(page, browser) {
         // h3 인사말 입력 (gemini에 h3가 있는 경우)
         if (resultData.gemini.h3) {
             console.log(`인사말 입력: ${resultData.gemini.h3}`);
+            // 인사말 글자 크기 16으로 설정
+            await changeFontSize(page, frame, '16');
+            await new Promise((resolve) => setTimeout(resolve, 300));
             await typeWithRandomDelay(page, resultData.gemini.h3);
 
-            // 엔터 두 번으로 단락 구분
-            await new Promise((resolve) => setTimeout(resolve, 100));
+            // 글자 크기 기본값(15)으로 복원
+            await new Promise((resolve) => setTimeout(resolve, 200));
             await page.keyboard.press('Enter');
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            await changeFontSize(page, frame, '15');
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
+            // 엔터로 단락 구분
             await page.keyboard.press('Enter');
             await new Promise((resolve) => setTimeout(resolve, 100));
         }
@@ -1138,6 +1145,37 @@ async function writePost(page, browser) {
             return uploadSuccess;
         }
 
+        // 본문 텍스트를 네이버 SEO 스타일 단락으로 분리하는 함수
+        // 2~3문장씩 끊어서 빈 줄로 구분 (가독성 극대화)
+        function splitIntoParagraphs(text) {
+            if (!text) return [];
+            // 먼저 기존 줄바꿈으로 분리
+            const rawLines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            const paragraphs = [];
+
+            for (const line of rawLines) {
+                // 문장 단위로 분리 (마침표, 물음표, 느낌표 + 공백 기준)
+                const sentences = line.match(/[^.!?…]+[.!?…]+/g) || [line];
+                let chunk = '';
+                let sentCount = 0;
+
+                for (const sentence of sentences) {
+                    chunk += (chunk ? ' ' : '') + sentence.trim();
+                    sentCount++;
+                    // 2~3문장마다 단락 분리
+                    if (sentCount >= 2 && (sentCount >= 3 || chunk.length > 80)) {
+                        paragraphs.push(chunk.trim());
+                        chunk = '';
+                        sentCount = 0;
+                    }
+                }
+                if (chunk.trim()) {
+                    paragraphs.push(chunk.trim());
+                }
+            }
+            return paragraphs;
+        }
+
         // 각 섹션 처리
         for (let i = 0; i < sectionCount; i++) {
             const section = resultData.gemini.sections[i];
@@ -1160,30 +1198,95 @@ async function writePost(page, browser) {
             await page.keyboard.press('Enter');
             await new Promise((resolve) => setTimeout(resolve, 500));
 
-            // 이 섹션에 배정된 이미지들 삽입
+            // 본문을 2~3문장 단락으로 분리
+            const paragraphs = splitIntoParagraphs(section.p);
             const assignedImages = imageAssignment[i] || [];
-            for (let j = 0; j < assignedImages.length; j++) {
-                const imgIdx = assignedImages[j];
-                const imagePath = path.join(imgsDir, allImageFiles[imgIdx]);
-                const success = await uploadImageWithRetry(page, frame, imagePath);
-                if (success) {
-                    console.log(`  섹션${i + 1} 이미지 삽입: ${allImageFiles[imgIdx]}`);
-                    await new Promise((resolve) => setTimeout(resolve, 500));
-                    await page.keyboard.press('Enter');
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                } else {
-                    console.log(`❌ 이미지 업로드 실패: ${allImageFiles[imgIdx]}`);
+
+            // 이미지를 단락 사이에 균등 배치할 위치 계산
+            // 예: 단락 4개 + 이미지 2장 → 단락2 뒤, 단락4 뒤에 이미지 삽입
+            const imagePositions = {}; // { 단락인덱스: [이미지인덱스들] }
+            if (assignedImages.length > 0 && paragraphs.length > 0) {
+                for (let imgJ = 0; imgJ < assignedImages.length; imgJ++) {
+                    // 단락 사이에 균등 분배 (첫 단락 뒤부터)
+                    const pos = Math.min(
+                        Math.floor((imgJ + 1) * paragraphs.length / (assignedImages.length + 1)),
+                        paragraphs.length - 1
+                    );
+                    if (!imagePositions[pos]) imagePositions[pos] = [];
+                    imagePositions[pos].push(assignedImages[imgJ]);
                 }
             }
 
-            // p 내용 입력 (인용구 밖에서)
-            await typeWithRandomDelay(page, section.p);
+            // 본문 글자 크기 설정 (16px - 가독성)
+            await changeFontSize(page, frame, '16');
+            await new Promise((resolve) => setTimeout(resolve, 300));
 
-            // 섹션 사이 구분을 위해 엔터 두 번 (마지막 섹션 제외)
-            if (i < sectionCount - 1) {
+            // 단락 + 이미지 교차 배치
+            for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
+                // 첫 번째 단락은 볼드 처리 (핵심 요약 강조)
+                if (pIdx === 0) {
+                    await page.keyboard.down('Control');
+                    await page.keyboard.press('b');
+                    await page.keyboard.up('Control');
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+
+                // 단락 텍스트 입력
+                await typeWithRandomDelay(page, paragraphs[pIdx]);
+
+                // 첫 번째 단락 볼드 해제
+                if (pIdx === 0) {
+                    await page.keyboard.down('Control');
+                    await page.keyboard.press('b');
+                    await page.keyboard.up('Control');
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+
+                // 단락 사이 빈 줄 (네이버 SEO 가독성)
                 await new Promise((resolve) => setTimeout(resolve, 100));
                 await page.keyboard.press('Enter');
                 await new Promise((resolve) => setTimeout(resolve, 50));
+                await page.keyboard.press('Enter');
+                await new Promise((resolve) => setTimeout(resolve, 100));
+
+                // 이 단락 뒤에 배정된 이미지 삽입
+                if (imagePositions[pIdx]) {
+                    for (const imgIdx of imagePositions[pIdx]) {
+                        const imagePath = path.join(imgsDir, allImageFiles[imgIdx]);
+                        const success = await uploadImageWithRetry(page, frame, imagePath);
+                        if (success) {
+                            console.log(`  섹션${i + 1} 단락${pIdx + 1} 뒤 이미지 삽입: ${allImageFiles[imgIdx]}`);
+                            await new Promise((resolve) => setTimeout(resolve, 500));
+                            await page.keyboard.press('Enter');
+                            await new Promise((resolve) => setTimeout(resolve, 300));
+                        } else {
+                            console.log(`❌ 이미지 업로드 실패: ${allImageFiles[imgIdx]}`);
+                        }
+                    }
+                }
+            }
+
+            // 이미지 위치가 배정 안 된 나머지 이미지 처리 (단락이 0개인 경우 등)
+            if (paragraphs.length === 0) {
+                for (const imgIdx of assignedImages) {
+                    const imagePath = path.join(imgsDir, allImageFiles[imgIdx]);
+                    const success = await uploadImageWithRetry(page, frame, imagePath);
+                    if (success) {
+                        console.log(`  섹션${i + 1} 이미지 삽입: ${allImageFiles[imgIdx]}`);
+                        await new Promise((resolve) => setTimeout(resolve, 500));
+                        await page.keyboard.press('Enter');
+                        await new Promise((resolve) => setTimeout(resolve, 300));
+                    }
+                }
+            }
+
+            // 글자 크기 기본값(15)으로 복원
+            await changeFontSize(page, frame, '15');
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
+            // 섹션 사이 구분을 위해 엔터 (마지막 섹션 제외)
+            if (i < sectionCount - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
                 await page.keyboard.press('Enter');
                 await new Promise((resolve) => setTimeout(resolve, 100));
             }

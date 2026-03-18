@@ -382,7 +382,7 @@ ${imageDeduplicationNote}
             ];
         }
 
-        console.log('문맥에 맞는 이미지를 순차적으로 생성합니다 (gemini-2.5-flash-image)...\n');
+        console.log(`문맥에 맞는 이미지를 순차적으로 생성합니다 (${process.env.IMAGE_MODEL || 'gemini-2.5-flash-image'})...\n`);
 
         // 파일 포맷팅: 랜덤 키워드 + 타임스탬프로 파일명 생성
         const timestamp = new Date().toISOString().replace(/T/, '_').replace(/:/g, '-').slice(0, 19);
