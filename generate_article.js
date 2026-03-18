@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
-const crypto = require('crypto');
 
 // 톡상담 아이콘 경로
 const ICON_TALK_PATH = path.join(__dirname, 'icon_talk.png');
@@ -102,7 +101,6 @@ async function antiDetectProcess(inputBuffer) {
     const isoValues = [100, 200, 400, 640, 800];
     const focalLengths = [24, 26, 28, 35, 50];
 
-    const exifIfd0 = {};
     // withMetadata는 제한적이므로 가능한 필드만 삽입
     processed = await sharp(processed)
         .png({ compressionLevel: 6 })
@@ -418,11 +416,8 @@ ${imageDeduplicationNote}
 
             const promptIndex = Math.min(i, Math.max(0, generatedImgPrompts.length - 1));
             const imagePrompt = generatedImgPrompts[promptIndex];
-            const finalImagePrompt = imagePrompt;
 
-            console.log(`  -> 프롬프트 적용 완료`);
-
-            const imagePart = await generateSingleImage(ai, finalImagePrompt, 3);
+            const imagePart = await generateSingleImage(ai, imagePrompt, 3);
 
             if (imagePart) {
                 const imgFilename = `img_${randomKeyword}_${timestamp}_${myIndex}.png`;
@@ -483,21 +478,7 @@ ${imageDeduplicationNote}
         // AI가 출력한 undefined 텍스트 제거
         finalOutputText = finalOutputText.replace(/^\s*undefined\s*$/gm, '');
 
-        console.log('\n============= [최종 완성 텍스트] =============\n');
-        console.log(finalOutputText);
-        console.log('\n==========================================\n');
-
-        const outputFileName = `result_${randomKeyword}_${timestamp}.txt`;
-        const outputPath = path.join(__dirname, outputFileName);
-
-        // 파일에 저장
-        fs.writeFileSync(outputPath, finalOutputText, 'utf-8');
-        console.log(`작성된 글과 이미지가 '${outputFileName}' 파일로 함께 저장되었습니다.`);
-
-        // ========================================
-        // 3.post.js 연동: result.json + imgs/ 생성
-        // ========================================
-        console.log('\n📦 3.post.js 연동용 result.json 및 imgs/ 생성 중...');
+        console.log('\n📦 result.json 및 imgs/ 생성 중...');
 
         // 마크다운 텍스트를 섹션별로 파싱
         const lines = finalOutputText.split('\n').filter(l => l.trim() !== '');
@@ -615,9 +596,6 @@ ${imageDeduplicationNote}
                 h3: h3,
                 sections: sections
             },
-            상품목록: [],
-            선택된상품ID: null,
-            선택된상품명: randomKeyword,
             키워드: randomKeyword
         };
 

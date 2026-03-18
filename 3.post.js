@@ -1303,7 +1303,7 @@ async function writePost(page, browser) {
             console.log('\n제품 이미지로 동영상 슬라이드쇼 생성 중...');
             try {
                 // imgs 폴더의 이미지들로 동영상 생성
-                const videoTitle = resultData.선택된상품명 ? resultData.선택된상품명.substring(0, 10) : '제품';
+                const videoTitle = resultData.키워드 ? resultData.키워드.substring(0, 10) : '제품';
                 const videoPath = await createSlideshow(videoTitle);
                 console.log(`동영상이 생성되었습니다: ${videoPath}`);
 
@@ -1403,7 +1403,7 @@ async function writePost(page, browser) {
 
 
         const displayTitle = resultData.gemini.h1 || (resultData.gemini.sections[0] && resultData.gemini.sections[0].h2) || '';
-        console.log(`\n포스팅 완료! 제목: ${displayTitle} | 키워드: ${resultData.키워드 || resultData.선택된상품명 || '-'}`);
+        console.log(`\n포스팅 완료! 제목: ${displayTitle} | 키워드: ${resultData.키워드 || '-'}`);
 
         // 파일 정리 (imgs 폴더 내용과 result.json 삭제)
         await cleanupFiles();

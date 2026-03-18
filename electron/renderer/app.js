@@ -10,7 +10,7 @@ function navigateTo(pageName) {
     if (pageName === 'dashboard') { loadDashboard(); loadSettings(); }
     if (pageName === 'keywords') loadKeywords();
     if (pageName === 'history') loadHistory();
-    if (pageName === 'posting') { loadSettings(); loadDraftStatus(); loadResultPreview(); }
+    if (pageName === 'posting') { loadSettings(); loadDraftStatus(); loadResultPreview(); loadAccountCheckboxes(); }
 }
 
 navItems.forEach(item => {
@@ -139,6 +139,36 @@ document.getElementById('btnDeleteDraft').addEventListener('click', async () => 
 });
 
 // ===== Posting Page (통합) =====
+
+// 계정 체크박스 로드
+async function loadAccountCheckboxes() {
+    const data = await window.api.naver.loadAccounts();
+    const list = document.getElementById('accountCheckboxList');
+    list.innerHTML = '';
+    data.accounts.forEach(a => {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:13px; padding:4px 8px; background:var(--bg-secondary,#fff); border-radius:4px; cursor:pointer;';
+        label.innerHTML = `<input type="checkbox" value="${a.id}" checked> ${a.id}`;
+        list.appendChild(label);
+    });
+}
+
+// autoAll 모드 선택 시 계정 선택 영역 표시/숨김
+document.querySelectorAll('input[name="postMode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+        const area = document.getElementById('accountSelectArea');
+        area.style.display = radio.value === 'autoAll' && radio.checked ? 'block' : 'none';
+        if (radio.value === 'autoAll' && radio.checked) loadAccountCheckboxes();
+    });
+});
+
+// 전체 선택 체크박스
+document.getElementById('accountSelectAll').addEventListener('change', (e) => {
+    document.querySelectorAll('#accountCheckboxList input[type="checkbox"]').forEach(cb => {
+        cb.checked = e.target.checked;
+    });
+});
+
 document.getElementById('btnPost').addEventListener('click', async () => {
     document.getElementById('postLog').innerHTML = '';
     setRunning(true);
@@ -158,7 +188,14 @@ document.getElementById('btnPost').addEventListener('click', async () => {
             await window.api.script.auto();
         }
     } else if (mode === 'autoAll') {
-        await window.api.script.autoAll();
+        const checked = document.querySelectorAll('#accountCheckboxList input[type="checkbox"]:checked');
+        const selectedIds = Array.from(checked).map(cb => cb.value);
+        if (selectedIds.length === 0) {
+            alert('실행할 계정을 선택해주세요.');
+            setRunning(false);
+            return;
+        }
+        await window.api.script.autoAll(selectedIds);
     } else {
         // post 모드: result.json 없으면 main.js에서 자동 생성 처리
         await window.api.script.post();

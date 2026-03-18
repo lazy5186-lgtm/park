@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('api', {
         post: () => ipcRenderer.invoke('script:post'),
         postDraft: () => ipcRenderer.invoke('script:postDraft'),
         auto: () => ipcRenderer.invoke('script:auto'),
-        autoAll: () => ipcRenderer.invoke('script:autoAll'),
+        autoAll: (selectedIds) => ipcRenderer.invoke('script:autoAll', selectedIds),
         stop: () => ipcRenderer.invoke('script:stop'),
         onLog: (callback) => {
             const handler = (_event, data) => callback(data);

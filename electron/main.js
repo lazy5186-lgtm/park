@@ -147,30 +147,35 @@ function isResultValid() {
     }
 }
 
+// 글 생성 후 포스팅으로 이어지는 공통 로직
+function generateThenPost(config, sender, label = '') {
+    const prefix = label ? `${label}: ` : '';
+    runScript('generate_article.js', config, {
+        send: (channel, data) => {
+            if (channel === 'script:done') {
+                if (isResultValid()) {
+                    sender.send('script:log', { type: 'info', data: `\n${prefix}글 생성 완료! 5초 후 포스팅 시작...\n` });
+                    setTimeout(() => {
+                        runScript('3.post.js', config, sender);
+                    }, 5000);
+                } else {
+                    sender.send('script:log', { type: 'stderr', data: '\n글 생성에 실패했습니다. 포스팅을 중단합니다.\n' });
+                    sender.send('script:done', { code: 1, script: '3.post.js' });
+                }
+            } else {
+                sender.send(channel, data);
+            }
+        }
+    });
+}
+
 ipcMain.handle('script:post', (event) => {
     const config = loadConfig();
     const sender = event.sender;
 
     if (!isResultValid()) {
         sender.send('script:log', { type: 'info', data: 'result.json이 없거나 글 데이터가 없습니다. 글 생성을 먼저 실행합니다...\n' });
-        runScript('generate_article.js', config, {
-            send: (channel, data) => {
-                // 중간 단계에서는 script:done을 프론트엔드로 보내지 않음 (로그만 전달)
-                if (channel === 'script:done') {
-                    if (isResultValid()) {
-                        sender.send('script:log', { type: 'info', data: '\n글 생성 완료! 5초 후 포스팅을 시작합니다...\n' });
-                        setTimeout(() => {
-                            runScript('3.post.js', config, sender);
-                        }, 5000);
-                    } else {
-                        sender.send('script:log', { type: 'stderr', data: '\n글 생성에 실패했습니다. 포스팅을 중단합니다.\n' });
-                        sender.send('script:done', { code: 1, script: '3.post.js' });
-                    }
-                } else {
-                    sender.send(channel, data);
-                }
-            }
-        });
+        generateThenPost(config, sender);
     } else {
         sender.send('script:log', { type: 'info', data: '임시 저장된 글이 있습니다. 바로 포스팅을 시작합니다...\n' });
         runScript('3.post.js', config, sender);
@@ -178,7 +183,6 @@ ipcMain.handle('script:post', (event) => {
     return { started: true };
 });
 
-// "이 글 포스팅" 버튼 전용 - 무조건 3.post.js만 실행 (generate 없음)
 ipcMain.handle('script:postDraft', (event) => {
     const config = loadConfig();
     const sender = event.sender;
@@ -199,43 +203,30 @@ ipcMain.handle('script:auto', (event) => {
     const sender = event.sender;
 
     sender.send('script:log', { type: 'info', data: '자동 모드: 글 생성 시작...\n' });
-    runScript('generate_article.js', config, {
-        send: (channel, data) => {
-            if (channel === 'script:done') {
-                if (isResultValid()) {
-                    sender.send('script:log', { type: 'info', data: '\n자동 모드: 글 생성 완료! 5초 후 포스팅 시작...\n' });
-                    setTimeout(() => {
-                        runScript('3.post.js', config, sender);
-                    }, 5000);
-                } else {
-                    sender.send('script:log', { type: 'stderr', data: '\n글 생성에 실패했습니다. 포스팅을 중단합니다.\n' });
-                    sender.send('script:done', { code: 1, script: '3.post.js' });
-                }
-            } else {
-                sender.send(channel, data);
-            }
-        }
-    });
+    generateThenPost(config, sender, '자동 모드');
     return { started: true };
 });
 
-// 모든 계정 순차 자동 포스팅 (계정별 IP 변경 + 글 생성 + 포스팅)
+// 선택 계정 순차 자동 포스팅 (계정별 IP 변경 + 글 생성 + 포스팅)
 let autoAllAborted = false;
 
-ipcMain.handle('script:autoAll', async (event) => {
+ipcMain.handle('script:autoAll', async (event, selectedIds) => {
     const config = loadConfig();
     const sender = event.sender;
     const accountsData = loadNaverAccounts();
-    const accounts = accountsData.accounts;
+    // selectedIds가 있으면 해당 계정만, 없으면 전체
+    const accounts = selectedIds && selectedIds.length > 0
+        ? accountsData.accounts.filter(a => selectedIds.includes(a.id))
+        : accountsData.accounts;
     autoAllAborted = false;
 
     if (accounts.length === 0) {
-        sender.send('script:log', { type: 'stderr', data: '등록된 네이버 계정이 없습니다.\n' });
+        sender.send('script:log', { type: 'stderr', data: '선택된 계정이 없습니다.\n' });
         sender.send('script:done', { code: 1, script: 'autoAll' });
         return { started: false };
     }
 
-    sender.send('script:log', { type: 'info', data: `=== 전체 계정 자동 포스팅 시작 (${accounts.length}개 계정) ===\n\n` });
+    sender.send('script:log', { type: 'info', data: `=== 선택 계정 자동 포스팅 시작 (${accounts.length}개 계정: ${accounts.map(a => a.id).join(', ')}) ===\n\n` });
 
     for (let idx = 0; idx < accounts.length; idx++) {
         if (autoAllAborted) {
@@ -365,19 +356,7 @@ ipcMain.handle('ip:change', async (event, interfaceName) => {
 });
 
 // ---- Naver Account Management ----
-ipcMain.handle('naver:loadAccounts', () => {
-    const data = loadNaverAccounts();
-    // Attach cookie status to each account
-    const accounts = data.accounts.map(a => ({
-        ...a,
-        pw: '****', // Don't expose password to renderer
-        cookieStatus: getNaverAccountCookieStatus(a.id)
-    }));
-    return { accounts, selectedId: data.selectedId };
-});
-
-ipcMain.handle('naver:addAccount', (_event, { id, pw }) => {
-    addNaverAccount(id, pw);
+function getAccountsResponse() {
     const data = loadNaverAccounts();
     const accounts = data.accounts.map(a => ({
         ...a,
@@ -385,28 +364,23 @@ ipcMain.handle('naver:addAccount', (_event, { id, pw }) => {
         cookieStatus: getNaverAccountCookieStatus(a.id)
     }));
     return { accounts, selectedId: data.selectedId };
+}
+
+ipcMain.handle('naver:loadAccounts', () => getAccountsResponse());
+
+ipcMain.handle('naver:addAccount', (_event, { id, pw }) => {
+    addNaverAccount(id, pw);
+    return getAccountsResponse();
 });
 
 ipcMain.handle('naver:removeAccount', (_event, id) => {
     removeNaverAccount(id);
-    const data = loadNaverAccounts();
-    const accounts = data.accounts.map(a => ({
-        ...a,
-        pw: '****',
-        cookieStatus: getNaverAccountCookieStatus(a.id)
-    }));
-    return { accounts, selectedId: data.selectedId };
+    return getAccountsResponse();
 });
 
 ipcMain.handle('naver:selectAccount', (_event, id) => {
     selectNaverAccount(id);
-    const data = loadNaverAccounts();
-    const accounts = data.accounts.map(a => ({
-        ...a,
-        pw: '****',
-        cookieStatus: getNaverAccountCookieStatus(a.id)
-    }));
-    return { accounts, selectedId: data.selectedId };
+    return getAccountsResponse();
 });
 
 ipcMain.handle('naver:login', async (event, id) => {
