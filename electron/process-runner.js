@@ -1,6 +1,7 @@
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { getUserDataDir } = require('./config-manager');
 
 let currentProcess = null;
 
@@ -19,7 +20,7 @@ function decodeOutput(buf) {
 
 function getSelectedAccount() {
     try {
-        const accountsPath = path.join(__dirname, '..', 'naver_accounts.json');
+        const accountsPath = path.join(getUserDataDir(), 'naver_accounts.json');
         if (fs.existsSync(accountsPath)) {
             const data = JSON.parse(fs.readFileSync(accountsPath, 'utf-8'));
             if (data.selectedId) {
@@ -49,7 +50,8 @@ function buildEnv(config, accountOverride) {
         RANDOM_DELAY_MAX: '5',
         OVERLAY_KAKAO_ID: config.overlay?.kakaoId || 'loandr_',
         OVERLAY_PHONE: config.overlay?.phone || '010-8442-4224',
-        IMAGE_COUNT: String(config.imageCount || 0)
+        IMAGE_COUNT: String(config.imageCount || 0),
+        USER_DATA_DIR: getUserDataDir()
     };
 }
 

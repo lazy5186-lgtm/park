@@ -1,7 +1,24 @@
 const fs = require('fs');
 const path = require('path');
 
-const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
+// 유저 데이터 경로: %APPDATA%/N_blog_auto (업데이트해도 유지됨)
+// Electron app이 초기화되기 전에는 fallback 사용
+let USER_DATA_DIR;
+try {
+    const { app } = require('electron');
+    USER_DATA_DIR = path.join(app.getPath('userData'));
+} catch (e) {
+    // Electron app이 아직 준비 안 된 경우 fallback
+    USER_DATA_DIR = path.join(process.env.APPDATA || path.join(require('os').homedir(), '.config'), 'N_blog_auto');
+}
+
+// 앱 리소스 경로 (프롬프트 등 읽기 전용 파일)
+const APP_DIR = path.join(__dirname, '..');
+
+// 유저 데이터 폴더 생성
+if (!fs.existsSync(USER_DATA_DIR)) fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+
+const CONFIG_PATH = path.join(USER_DATA_DIR, 'config.json');
 
 const DEFAULT_CONFIG = {
     geminiApiKey: '',
@@ -27,27 +44,7 @@ function loadConfig() {
     } catch (err) {
         console.error('config.json 읽기 오류:', err.message);
     }
-
-    // 기존 설정 파일에서 초기값 로드 시도
-    const config = { ...DEFAULT_CONFIG };
-    try {
-        const postIdPath = path.join(__dirname, '..', 'settings', 'post_id.txt');
-        if (fs.existsSync(postIdPath)) {
-            const lines = fs.readFileSync(postIdPath, 'utf-8').split('\n');
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (trimmed && !trimmed.startsWith('#')) {
-                    const [id, ...pwParts] = trimmed.split(':');
-                    if (id && pwParts.length > 0) {
-                        config.naverAccount = { id: id.trim(), pw: pwParts.join(':').trim() };
-                        break;
-                    }
-                }
-            }
-        }
-    } catch (e) { /* ignore */ }
-
-    return config;
+    return { ...DEFAULT_CONFIG };
 }
 
 function saveConfig(config) {
@@ -55,8 +52,8 @@ function saveConfig(config) {
 }
 
 function loadKeywords() {
-    const promptPath = path.join(__dirname, '..', 'prompt', 'prompt', 'info_Prompt.md');
-    const usedPath = path.join(__dirname, '..', 'used_keywords.json');
+    const promptPath = path.join(APP_DIR, 'prompt', 'prompt', 'info_Prompt.md');
+    const usedPath = path.join(USER_DATA_DIR, 'used_keywords.json');
 
     let allKeywords = [];
     let usedKeywords = [];
@@ -69,7 +66,6 @@ function loadKeywords() {
             allKeywords = match[1].split(',').map(k => k.trim()).filter(k => k.length > 0);
         }
         if (allKeywords.length === 0) {
-            // 대체: 줄단위 키워드 추출 시도
             const lines = promptContent.split('\n');
             for (const line of lines) {
                 if (line.includes(',') && !line.startsWith('#')) {
@@ -83,9 +79,9 @@ function loadKeywords() {
         }
     } catch (e) { /* ignore */ }
 
-    // custom_keywords.json 에서 추가 키워드 읽기
+    // custom_keywords.json
     try {
-        const customPath = path.join(__dirname, '..', 'custom_keywords.json');
+        const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
         if (fs.existsSync(customPath)) {
             const custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
             if (Array.isArray(custom)) {
@@ -94,10 +90,10 @@ function loadKeywords() {
         }
     } catch (e) { /* ignore */ }
 
-    // removed_keywords.json 에서 삭제된 키워드 필터링
+    // removed_keywords.json
     let removedKeywords = [];
     try {
-        const removedPath = path.join(__dirname, '..', 'removed_keywords.json');
+        const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
         if (fs.existsSync(removedPath)) {
             removedKeywords = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
         }
@@ -116,13 +112,12 @@ function loadKeywords() {
 }
 
 function resetKeywords() {
-    const usedPath = path.join(__dirname, '..', 'used_keywords.json');
+    const usedPath = path.join(USER_DATA_DIR, 'used_keywords.json');
     fs.writeFileSync(usedPath, '[]', 'utf-8');
 }
 
 function removeKeyword(keyword) {
-    // custom_keywords.json에서 제거
-    const customPath = path.join(__dirname, '..', 'custom_keywords.json');
+    const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
     try {
         if (fs.existsSync(customPath)) {
             let custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
@@ -131,8 +126,7 @@ function removeKeyword(keyword) {
         }
     } catch (e) { /* ignore */ }
 
-    // removed_keywords.json에 추가 (프롬프트 키워드 차단용)
-    const removedPath = path.join(__dirname, '..', 'removed_keywords.json');
+    const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
     let removed = [];
     try {
         if (fs.existsSync(removedPath)) {
@@ -146,7 +140,7 @@ function removeKeyword(keyword) {
 }
 
 function saveCustomKeywords(keywords) {
-    const customPath = path.join(__dirname, '..', 'custom_keywords.json');
+    const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
     let existing = [];
     try {
         if (fs.existsSync(customPath)) {
@@ -156,8 +150,7 @@ function saveCustomKeywords(keywords) {
     const merged = [...existing, ...keywords.filter(k => k && !existing.includes(k))];
     fs.writeFileSync(customPath, JSON.stringify(merged, null, 2), 'utf-8');
 
-    // removed_keywords.json에서 다시 추가된 키워드 제거 (복원)
-    const removedPath = path.join(__dirname, '..', 'removed_keywords.json');
+    const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
     try {
         if (fs.existsSync(removedPath)) {
             let removed = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
@@ -170,7 +163,7 @@ function saveCustomKeywords(keywords) {
 }
 
 function loadHistory() {
-    const postedDir = path.join(__dirname, '..', 'posted');
+    const postedDir = path.join(USER_DATA_DIR, 'posted');
     const records = [];
 
     try {
@@ -181,7 +174,6 @@ function loadHistory() {
             const content = fs.readFileSync(path.join(postedDir, file), 'utf-8');
             const lines = content.split('\n').filter(l => l.trim());
             for (const line of lines) {
-                // Format: 1회:2026-03-05:12:40분:URL (URL은 선택)
                 const match = line.match(/(\d+)회:(\d{4}-\d{2}-\d{2}):(\d+):(\d+)분(?::(.+))?/);
                 if (match) {
                     records.push({
@@ -206,11 +198,11 @@ function loadHistory() {
 
 // ---- Naver Account Management ----
 function getNaverAccountsPath() {
-    return path.join(__dirname, '..', 'naver_accounts.json');
+    return path.join(USER_DATA_DIR, 'naver_accounts.json');
 }
 
 function getCookiesDir() {
-    const dir = path.join(__dirname, '..', 'cookies');
+    const dir = path.join(USER_DATA_DIR, 'cookies');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     return dir;
 }
@@ -248,7 +240,6 @@ function removeNaverAccount(id) {
     if (data.selectedId === id) {
         data.selectedId = data.accounts.length > 0 ? data.accounts[0].id : null;
     }
-    // Remove cookie file
     const cookiePath = path.join(getCookiesDir(), `${id}_cookies.json`);
     if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
     saveNaverAccounts(data);
@@ -290,8 +281,12 @@ function loadNaverCookies(id) {
     }
 }
 
+function getUserDataDir() {
+    return USER_DATA_DIR;
+}
+
 module.exports = {
     loadConfig, saveConfig, loadKeywords, resetKeywords, removeKeyword, saveCustomKeywords, loadHistory,
     loadNaverAccounts, saveNaverAccounts, addNaverAccount, removeNaverAccount, selectNaverAccount,
-    getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies, getCookiesDir
+    getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies, getCookiesDir, getUserDataDir
 };

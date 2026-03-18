@@ -80,7 +80,7 @@ function getSelectedAccountFromDashboard() {
     console.log('\n📊 선택된 포스트 계정 확인...');
 
     try {
-        const dashboardDir = path.join(__dirname, 'post_dashboard');
+        const dashboardDir = path.join(process.env.USER_DATA_DIR || __dirname, 'post_dashboard');
         const selectedAccountFile = path.join(dashboardDir, 'selected_account.txt');
 
         if (!fs.existsSync(selectedAccountFile)) {
@@ -308,7 +308,7 @@ function getPostedFileName(userId) {
 // 파일 내 오래된 발행 기록 삭제 함수
 function cleanupOldRecordsInFile(userId) {
     const fileName = getPostedFileName(userId);
-    const postedDir = path.join(__dirname, 'posted');
+    const postedDir = path.join(process.env.USER_DATA_DIR || __dirname, 'posted');
     const filePath = path.join(postedDir, fileName);
 
     if (!fs.existsSync(filePath)) {
@@ -355,7 +355,7 @@ function cleanupOldRecordsInFile(userId) {
 
 function loadPostedRecords(userId) {
     const fileName = getPostedFileName(userId);
-    const postedDir = path.join(__dirname, 'posted');
+    const postedDir = path.join(process.env.USER_DATA_DIR || __dirname, 'posted');
 
     // posted 폴더가 없으면 생성
     if (!fs.existsSync(postedDir)) {
@@ -423,7 +423,7 @@ function loadPostedRecords(userId) {
 
 function savePostedRecord(userId, hour, minute, scheduledDate = null, url = '') {
     const fileName = getPostedFileName(userId);
-    const postedDir = path.join(__dirname, 'posted');
+    const postedDir = path.join(process.env.USER_DATA_DIR || __dirname, 'posted');
 
     // posted 폴더가 없으면 생성
     if (!fs.existsSync(postedDir)) {

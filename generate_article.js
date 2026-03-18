@@ -164,12 +164,14 @@ async function createBottomOverlay(width) {
 
 // Gemini API Key
 const API_KEY = process.env.GEMINI_API_KEY || '';
-// Prompt file path
+// 유저 데이터 경로 (업데이트해도 유지)
+const USER_DATA_DIR = process.env.USER_DATA_DIR || __dirname;
+// Prompt file path (앱 리소스 - 읽기 전용)
 const PROMPT_FILE_PATH = path.join(__dirname, 'prompt', 'prompt', 'info_Prompt.md');
-// 키워드별 이전 글 기록 경로
-const KEYWORD_HISTORY_PATH = path.join(__dirname, 'keyword_history.json');
-// 이미지 프롬프트 히스토리 경로 (중복 방지)
-const IMAGE_HISTORY_PATH = path.join(__dirname, 'image_prompt_history.json');
+// 키워드별 이전 글 기록 경로 (유저 데이터)
+const KEYWORD_HISTORY_PATH = path.join(USER_DATA_DIR, 'keyword_history.json');
+// 이미지 프롬프트 히스토리 경로 (유저 데이터)
+const IMAGE_HISTORY_PATH = path.join(USER_DATA_DIR, 'image_prompt_history.json');
 
 function loadImageHistory() {
     try {
@@ -220,7 +222,7 @@ async function generateArticle() {
         const keywordPool = keywordMatch[1].split(',').map(k => k.trim()).filter(k => k.length > 0);
 
         // 3. 랜덤 키워드 선택 (사이클 관리)
-        const usedKeywordsPath = path.join(__dirname, 'used_keywords.json');
+        const usedKeywordsPath = path.join(USER_DATA_DIR, 'used_keywords.json');
         let usedKeywords = [];
         if (fs.existsSync(usedKeywordsPath)) {
             try {

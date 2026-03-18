@@ -1,6 +1,6 @@
 {
   "name": "N_blog_auto",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "블로그 자동화 데스크톱 앱",
   "main": "electron/main.js",
   "scripts": {
@@ -57,9 +57,6 @@
       "prompt/**/*",
       "3.post.js",
       "generate_article.js",
-      "config.json",
-      "setting.txt",
-      "used_keywords.json",
       "imgs/**/*",
       "icon_talk.png",
       "package.json"
