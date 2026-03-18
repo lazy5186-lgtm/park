@@ -260,10 +260,12 @@
                     <small>선택한 계정 순차 (IP변경+글생성+포스팅)</small>
                 </label>
             </div>
-            <div id="accountSelectArea" style="display:none; margin: 8px 0; padding: 10px; background: var(--bg-tertiary, #f5f5f5); border-radius: 8px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-                    <strong style="font-size:13px;">실행할 계정 선택</strong>
-                    <label style="font-size:12px; cursor:pointer;"><input type="checkbox" id="accountSelectAll"> 전체 선택</label>
+            <div id="accountSelectArea" style="display:none; margin: 8px 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color, #e0e0e0);">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-size:12px; color:var(--text-secondary, #888);">실행할 계정</span>
+                    <label class="chip-toggle" style="font-size:11px; cursor:pointer; padding:2px 8px; border-radius:12px; border:1px solid var(--border-color,#ddd); user-select:none;">
+                        <input type="checkbox" id="accountSelectAll" style="display:none;"> 전체
+                    </label>
                 </div>
                 <div id="accountCheckboxList" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
             </div>

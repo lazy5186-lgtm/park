@@ -146,10 +146,26 @@ async function loadAccountCheckboxes() {
     const list = document.getElementById('accountCheckboxList');
     list.innerHTML = '';
     data.accounts.forEach(a => {
-        const label = document.createElement('label');
-        label.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:13px; padding:4px 8px; background:var(--bg-secondary,#fff); border-radius:4px; cursor:pointer;';
-        label.innerHTML = `<input type="checkbox" value="${a.id}" checked> ${a.id}`;
-        list.appendChild(label);
+        const chip = document.createElement('label');
+        chip.className = 'account-chip active';
+        chip.style.cssText = 'display:inline-flex; align-items:center; gap:4px; font-size:12px; padding:5px 12px; border-radius:16px; cursor:pointer; user-select:none; transition:all .15s; border:1px solid #4a9eff; background:#4a9eff; color:#fff;';
+        chip.innerHTML = `<input type="checkbox" value="${a.id}" checked style="display:none;"> ${a.id}`;
+        const cb = chip.querySelector('input');
+        cb.addEventListener('change', () => {
+            if (cb.checked) {
+                chip.style.background = '#4a9eff';
+                chip.style.borderColor = '#4a9eff';
+                chip.style.color = '#fff';
+            } else {
+                chip.style.background = 'transparent';
+                chip.style.borderColor = 'var(--border-color, #ddd)';
+                chip.style.color = 'var(--text-secondary, #888)';
+            }
+        });
+        chip.addEventListener('click', (e) => {
+            if (e.target !== cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+        });
+        list.appendChild(chip);
     });
 }
 
@@ -162,11 +178,16 @@ document.querySelectorAll('input[name="postMode"]').forEach(radio => {
     });
 });
 
-// 전체 선택 체크박스
+// 전체 선택 토글
 document.getElementById('accountSelectAll').addEventListener('change', (e) => {
     document.querySelectorAll('#accountCheckboxList input[type="checkbox"]').forEach(cb => {
         cb.checked = e.target.checked;
+        cb.dispatchEvent(new Event('change'));
     });
+});
+document.querySelector('label:has(#accountSelectAll)').addEventListener('click', (e) => {
+    const cb = document.getElementById('accountSelectAll');
+    if (e.target !== cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
 });
 
 document.getElementById('btnPost').addEventListener('click', async () => {
@@ -594,7 +615,6 @@ function renderNaverAccounts(data) {
 
     list.querySelectorAll('.btn-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm(`${btn.dataset.removeId} 계정을 삭제하시겠습니까?`)) return;
             const result = await window.api.naver.removeAccount(btn.dataset.removeId);
             renderNaverAccounts(result);
             showToast('계정 삭제됨', 'success');

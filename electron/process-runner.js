@@ -64,9 +64,10 @@ function runScript(scriptName, config, sender, accountOverride) {
 
     sender.send('script:log', { type: 'info', data: `▶ ${scriptName} 실행 중...\n` });
 
-    currentProcess = spawn('node', [scriptName], {
+    // Electron 내장 Node.js 사용 (ELECTRON_RUN_AS_NODE=1로 순수 Node 모드)
+    currentProcess = spawn(process.execPath, [scriptName], {
         cwd,
-        env,
+        env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
         stdio: ['pipe', 'pipe', 'pipe']
     });
 
