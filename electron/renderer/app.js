@@ -147,7 +147,16 @@ document.getElementById('btnPost').addEventListener('click', async () => {
     if (mode === 'generate') {
         await window.api.script.generate();
     } else if (mode === 'auto') {
-        await window.api.script.auto();
+        const result = await window.api.result.load();
+        if (result.exists) {
+            if (confirm('임시 저장된 글이 있습니다.\n\n확인 → 이 글을 바로 포스팅\n취소 → 새로 생성 후 포스팅')) {
+                await window.api.script.postDraft();
+            } else {
+                await window.api.script.auto();
+            }
+        } else {
+            await window.api.script.auto();
+        }
     } else if (mode === 'autoAll') {
         await window.api.script.autoAll();
     } else {
