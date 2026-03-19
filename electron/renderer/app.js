@@ -226,6 +226,14 @@ document.getElementById('btnPost').addEventListener('click', async () => {
         return;
     }
 
+    // 실행 전 현재 UI의 발행 모드 설정을 자동 저장
+    const currentConfig = await window.api.config.load();
+    currentConfig.scheduleMode = document.querySelector('input[name="scheduleMode"]:checked')?.value || 'instant';
+    currentConfig.scheduleDate = document.getElementById('cfgScheduleDate').value || '';
+    currentConfig.scheduleHour = document.getElementById('cfgScheduleHour').value || '';
+    currentConfig.scheduleMinute = document.getElementById('cfgScheduleMinute').value || '';
+    await window.api.config.save(currentConfig);
+
     document.getElementById('postLog').innerHTML = '';
     setRunning(true);
 
