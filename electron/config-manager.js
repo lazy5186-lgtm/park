@@ -28,7 +28,7 @@ const DEFAULT_CONFIG = {
     imageModel: 'gemini-2.5-flash-image',
     textModel: 'gemini-3-flash-preview',
     imageCount: 0,
-    scheduleMode: 'manual',
+    scheduleMode: 'instant',
     scheduleDate: '',
     scheduleHour: '',
     scheduleMinute: ''

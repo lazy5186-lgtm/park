@@ -36,7 +36,7 @@ const RANDOM_TYPING = 0;
 const USE_VIDEO = 0;
 
 // 발행 모드 설정 (auto: 자동계산, instant: 즉시발행, manual: 직접지정)
-const SCHEDULE_MODE = process.env.SCHEDULE_MODE || 'auto';
+const SCHEDULE_MODE = process.env.SCHEDULE_MODE || 'instant';
 const SCHEDULE_DATE = process.env.SCHEDULE_DATE || '';
 const SCHEDULE_HOUR = process.env.SCHEDULE_HOUR || '';
 const SCHEDULE_MINUTE = process.env.SCHEDULE_MINUTE || '';
