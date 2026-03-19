@@ -212,14 +212,38 @@ async function generateArticle() {
         // 1. 프롬프트 파일 읽기
         const promptContent = fs.readFileSync(PROMPT_FILE_PATH, 'utf-8');
 
-        // 2. 키워드 풀 추출 (정규식 사용)
+        // 2. 키워드 풀 추출
+        let keywordPool = [];
+
+        // 프롬프트에서 기본 키워드 로드 (있으면)
         const keywordMatch = promptContent.match(/당신의 전문 분야 키워드:\s*(.+)/);
-        if (!keywordMatch || !keywordMatch[1]) {
-            throw new Error('프롬프트에서 키워드 풀을 찾을 수 없습니다.');
+        if (keywordMatch && keywordMatch[1]) {
+            keywordPool = keywordMatch[1].split(',').map(k => k.trim()).filter(k => k.length > 0);
         }
 
-        // 쉼표(,)를 기준으로 키워드 배열 생성
-        const keywordPool = keywordMatch[1].split(',').map(k => k.trim()).filter(k => k.length > 0);
+        // 삭제된 키워드 필터링
+        try {
+            const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
+            if (fs.existsSync(removedPath)) {
+                const removed = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
+                keywordPool = keywordPool.filter(k => !removed.includes(k));
+            }
+        } catch (e) { /* ignore */ }
+
+        // 커스텀 키워드 추가
+        try {
+            const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
+            if (fs.existsSync(customPath)) {
+                const custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
+                if (Array.isArray(custom)) {
+                    keywordPool = [...keywordPool, ...custom.filter(k => k && !keywordPool.includes(k))];
+                }
+            }
+        } catch (e) { /* ignore */ }
+
+        if (keywordPool.length === 0) {
+            throw new Error('사용 가능한 키워드가 없습니다. 대시보드에서 키워드를 추가해주세요.');
+        }
 
         // 3. 랜덤 키워드 선택 (사이클 관리)
         const usedKeywordsPath = path.join(USER_DATA_DIR, 'used_keywords.json');
