@@ -190,11 +190,45 @@ document.querySelector('label:has(#accountSelectAll)').addEventListener('click',
     if (e.target !== cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
 });
 
+// 예약발행 날짜 검증
+function validateScheduleBeforeRun() {
+    const scheduleMode = document.querySelector('input[name="scheduleMode"]:checked')?.value;
+    if (scheduleMode === 'manual') {
+        const date = document.getElementById('cfgScheduleDate').value;
+        const hour = document.getElementById('cfgScheduleHour').value;
+        const minute = document.getElementById('cfgScheduleMinute').value;
+        if (!date || !hour || !minute) {
+            alert('예약 발행을 선택했지만 날짜/시간이 지정되지 않았습니다.\n설정에서 날짜와 시간을 입력해주세요.');
+            return false;
+        }
+    }
+    return true;
+}
+
+// 모드별 확인 메시지
+const modeLabels = {
+    generate: '글 생성만',
+    post: '포스팅만',
+    auto: '자동 실행 (글 생성 + 포스팅)',
+    autoAll: '다중 계정 자동'
+};
+
 document.getElementById('btnPost').addEventListener('click', async () => {
+    const mode = document.querySelector('input[name="postMode"]:checked').value;
+
+    // 포스팅이 포함된 모드는 예약발행 날짜 검증
+    if (mode !== 'generate' && !validateScheduleBeforeRun()) {
+        return;
+    }
+
+    // 실행 확인
+    if (!confirm(`[${modeLabels[mode]}] 모드로 실행하시겠습니까?`)) {
+        return;
+    }
+
     document.getElementById('postLog').innerHTML = '';
     setRunning(true);
 
-    const mode = document.querySelector('input[name="postMode"]:checked').value;
     if (mode === 'generate') {
         await window.api.script.generate();
     } else if (mode === 'auto') {
@@ -218,7 +252,6 @@ document.getElementById('btnPost').addEventListener('click', async () => {
         }
         await window.api.script.autoAll(selectedIds);
     } else {
-        // post 모드: result.json 없으면 main.js에서 자동 생성 처리
         await window.api.script.post();
     }
 });

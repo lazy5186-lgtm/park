@@ -42,7 +42,7 @@ function buildEnv(config, accountOverride) {
         KAKAO_LINK: config.kakaoLink || '',
         POST_ID: account.id,
         POST_PASSWORD: account.pw,
-        SCHEDULE_MODE: config.scheduleMode || 'auto',
+        SCHEDULE_MODE: config.scheduleMode || 'manual',
         SCHEDULE_DATE: config.scheduleDate || '',
         SCHEDULE_HOUR: config.scheduleHour || '',
         SCHEDULE_MINUTE: config.scheduleMinute || '',
