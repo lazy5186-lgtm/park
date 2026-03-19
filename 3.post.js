@@ -1589,16 +1589,45 @@ async function writePost(page, browser) {
 
                     if (SCHEDULE_MODE === 'instant') {
                         // ===== 즉시발행 모드 =====
-                        // 즉시 발행 라디오 선택 (radio_time1)
-                        const instantSelected = await frame.evaluate(() => {
-                            const label = document.querySelector('label[for="radio_time1"]');
-                            if (label) { label.click(); return true; }
+                        // 즉시 발행 라디오 선택 (radio_time1) - frame과 page 모두 시도
+                        let instantSelected = false;
+
+                        // 방법 1: frame에서 data-testid로 찾기
+                        instantSelected = await frame.evaluate(() => {
+                            const radio = document.querySelector('[data-testid="nowTimeRadioBtn"]')
+                                || document.querySelector('input#radio_time1')
+                                || document.querySelector('label[for="radio_time1"]');
+                            if (radio) { radio.click(); return true; }
                             return false;
-                        });
+                        }).catch(() => false);
+
+                        // 방법 2: page(메인)에서 찾기
                         if (!instantSelected) {
-                            throw new Error('즉시 발행 선택 실패');
+                            instantSelected = await page.evaluate(() => {
+                                const radio = document.querySelector('[data-testid="nowTimeRadioBtn"]')
+                                    || document.querySelector('input#radio_time1')
+                                    || document.querySelector('label[for="radio_time1"]');
+                                if (radio) { radio.click(); return true; }
+                                return false;
+                            }).catch(() => false);
                         }
-                        console.log('✅ 즉시 발행 선택 완료');
+
+                        // 방법 3: page에서 label 텍스트로 찾기
+                        if (!instantSelected) {
+                            instantSelected = await page.evaluate(() => {
+                                const labels = document.querySelectorAll('label');
+                                for (const label of labels) {
+                                    if (label.textContent.trim() === '현재') { label.click(); return true; }
+                                }
+                                return false;
+                            }).catch(() => false);
+                        }
+
+                        if (!instantSelected) {
+                            console.log('⚠️ 즉시 발행 라디오를 찾지 못했습니다. 기본값(현재)으로 진행합니다.');
+                        } else {
+                            console.log('✅ 즉시 발행 선택 완료');
+                        }
                         await new Promise((resolve) => setTimeout(resolve, 1000));
 
                         // 현재 KST 시간을 기록용으로 사용
@@ -1611,17 +1640,39 @@ async function writePost(page, browser) {
 
                     } else if (SCHEDULE_MODE === 'manual') {
                         // ===== 직접지정 모드 =====
-                        // 예약 발행 라디오 선택 (radio_time2)
-                        let radioExistsFrame = false;
+                        // 예약 발행 라디오 선택 (radio_time2) - frame과 page 모두 시도
+                        let radioSelected = false;
                         const maxRetries = 3;
+
                         for (let attempt = 1; attempt <= maxRetries; attempt++) {
                             console.log(`예약 발행 선택 시도 ${attempt}/${maxRetries}...`);
-                            radioExistsFrame = await frame.evaluate(() => {
-                                const label = document.querySelector('label[for="radio_time2"]');
-                                if (label) { label.click(); return true; }
+
+                            // frame에서 시도
+                            radioSelected = await frame.evaluate(() => {
+                                const radio = document.querySelector('[data-testid="preTimeRadioBtn"]')
+                                    || document.querySelector('input#radio_time2')
+                                    || document.querySelector('label[for="radio_time2"]');
+                                if (radio) { radio.click(); return true; }
                                 return false;
-                            });
-                            if (radioExistsFrame) {
+                            }).catch(() => false);
+
+                            // page에서 시도
+                            if (!radioSelected) {
+                                radioSelected = await page.evaluate(() => {
+                                    const radio = document.querySelector('[data-testid="preTimeRadioBtn"]')
+                                        || document.querySelector('input#radio_time2')
+                                        || document.querySelector('label[for="radio_time2"]');
+                                    if (radio) { radio.click(); return true; }
+                                    // 텍스트로 찾기
+                                    const labels = document.querySelectorAll('label');
+                                    for (const label of labels) {
+                                        if (label.textContent.trim() === '예약') { label.click(); return true; }
+                                    }
+                                    return false;
+                                }).catch(() => false);
+                            }
+
+                            if (radioSelected) {
                                 console.log(`✅ 예약 발행 선택 성공 (${attempt}번째 시도)`);
                                 break;
                             } else {
@@ -1629,7 +1680,7 @@ async function writePost(page, browser) {
                                 if (attempt < maxRetries) await new Promise((resolve) => setTimeout(resolve, 2000));
                             }
                         }
-                        if (!radioExistsFrame) throw new Error(`예약 발행 선택 실패 (${maxRetries}번 시도 후 포기)`);
+                        if (!radioSelected) throw new Error(`예약 발행 선택 실패 (${maxRetries}번 시도 후 포기)`);
                         console.log('✅ 예약 발행 선택 완료');
                         await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -1708,23 +1759,38 @@ async function writePost(page, browser) {
 
                     } else {
                         // ===== 자동계산 모드 (기존 로직) =====
-                        // 예약 발행 선택 (재시도 로직 포함)
-                        let radioExistsFrame = false;
+                        // 예약 발행 선택 - frame과 page 모두 시도
+                        let radioSelected = false;
                         const maxRetries = 3;
 
                         for (let attempt = 1; attempt <= maxRetries; attempt++) {
                             console.log(`예약 발행 선택 시도 ${attempt}/${maxRetries}...`);
 
-                            radioExistsFrame = await frame.evaluate(() => {
-                                const label = document.querySelector('label[for="radio_time2"]');
-                                if (label) {
-                                    label.click();
-                                    return true;
-                                }
+                            // frame에서 시도
+                            radioSelected = await frame.evaluate(() => {
+                                const radio = document.querySelector('[data-testid="preTimeRadioBtn"]')
+                                    || document.querySelector('input#radio_time2')
+                                    || document.querySelector('label[for="radio_time2"]');
+                                if (radio) { radio.click(); return true; }
                                 return false;
-                            });
+                            }).catch(() => false);
 
-                            if (radioExistsFrame) {
+                            // page에서 시도
+                            if (!radioSelected) {
+                                radioSelected = await page.evaluate(() => {
+                                    const radio = document.querySelector('[data-testid="preTimeRadioBtn"]')
+                                        || document.querySelector('input#radio_time2')
+                                        || document.querySelector('label[for="radio_time2"]');
+                                    if (radio) { radio.click(); return true; }
+                                    const labels = document.querySelectorAll('label');
+                                    for (const label of labels) {
+                                        if (label.textContent.trim() === '예약') { label.click(); return true; }
+                                    }
+                                    return false;
+                                }).catch(() => false);
+                            }
+
+                            if (radioSelected) {
                                 console.log(`✅ 예약 발행 선택 성공 (${attempt}번째 시도)`);
                                 break;
                             } else {
@@ -1736,7 +1802,7 @@ async function writePost(page, browser) {
                             }
                         }
 
-                        if (!radioExistsFrame) {
+                        if (!radioSelected) {
                             throw new Error(`예약 발행 선택 실패 (${maxRetries}번 시도 후 포기)`);
                         }
 
