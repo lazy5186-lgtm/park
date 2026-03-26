@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -352,6 +352,13 @@ ipcMain.handle('ip:change', async (event, interfaceName) => {
         return { success: true, ip: newIp };
     } catch (e) {
         return { success: false, error: e.message };
+    }
+});
+
+// ---- 외부 브라우저로 링크 열기 ----
+ipcMain.handle('open:external', async (_event, url) => {
+    if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+        await shell.openExternal(url);
     }
 });
 

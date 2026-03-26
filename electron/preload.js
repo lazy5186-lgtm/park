@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('api', {
             return () => ipcRenderer.removeListener('naver:loginLog', handler);
         }
     },
+    openExternal: (url) => ipcRenderer.invoke('open:external', url),
     app: {
         getVersion: () => ipcRenderer.invoke('app:version')
     },

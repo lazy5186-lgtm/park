@@ -399,7 +399,7 @@ async function loadHistory() {
 
     body.innerHTML = records.map(r => {
         const linkCell = r.url
-            ? `<a href="${escapeHtml(r.url)}" target="_blank" rel="noopener" style="color:var(--cerulean); text-decoration:underline; cursor:pointer; font-size:12px;">보기</a>`
+            ? `<a href="#" onclick="event.preventDefault(); window.api.openExternal('${escapeHtml(r.url)}')" style="color:var(--cerulean); text-decoration:underline; cursor:pointer; font-size:12px;">보기</a>`
             : '<span style="color:var(--text-muted);">-</span>';
         return `<tr>
             <td>${r.count}회</td>

@@ -1,6 +1,7 @@
 const { exec } = require('child_process');
 const os = require('os');
 const { getPublicIP } = require('./ip-checker');
+const adbHelper = require('./adb-helper');
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -39,7 +40,33 @@ function execCommand(cmd) {
     });
 }
 
-async function changeIP(interfaceName, logFn) {
+// === ADB 방식 (기본) ===
+async function changeIPviaADB(deviceId, logFn) {
+    const log = logFn || (() => {});
+
+    await adbHelper.toggleMobileData(deviceId, log);
+
+    // 폴링: IP를 받아올 때까지 1초 간격으로 확인 (최대 15초)
+    let newIp = null;
+    for (let i = 0; i < 15; i++) {
+        await delay(1000);
+        try {
+            newIp = await getPublicIP();
+            if (newIp) {
+                log(`변경 완료: ${newIp}`);
+                return newIp;
+            }
+        } catch (e) {
+            // 네트워크 아직 복구 안됨
+        }
+    }
+
+    log('IP 확인 실패');
+    return newIp;
+}
+
+// === netsh 방식 (폴백) ===
+async function changeIPviaNetsh(interfaceName, logFn) {
     const log = logFn || (() => {});
     const iface = interfaceName || findInterfaceName();
 
@@ -78,6 +105,30 @@ async function changeIP(interfaceName, logFn) {
     }
 
     return newIp;
+}
+
+// === 디스패처: ADB 우선, 실패 시 netsh 폴백 ===
+async function changeIP(interfaceName, logFn) {
+    const log = logFn || (() => {});
+
+    // ADB 방식 먼저 시도
+    try {
+        const adbAvailable = await adbHelper.isAdbAvailable();
+        if (adbAvailable) {
+            const devices = await adbHelper.getConnectedDevices();
+            const device = devices.find(d => d.status === 'device');
+            if (device) {
+                log(`ADB 기기 감지: ${device.serial} (모바일 데이터 토글 방식)`);
+                return await changeIPviaADB(null, log);
+            }
+        }
+    } catch (e) {
+        log(`ADB 방식 실패: ${e.message}`);
+    }
+
+    // ADB 불가 시 netsh 폴백
+    log('ADB 기기 없음 → netsh 방식으로 전환');
+    return await changeIPviaNetsh(interfaceName, log);
 }
 
 function checkInterface(interfaceName) {
