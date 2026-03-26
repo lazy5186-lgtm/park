@@ -207,8 +207,6 @@ function validateScheduleBeforeRun() {
 
 // 모드별 확인 메시지
 const modeLabels = {
-    generate: '글 생성만',
-    post: '포스팅만',
     auto: '자동 실행 (글 생성 + 포스팅)',
     autoAll: '다중 계정 자동'
 };
@@ -216,32 +214,33 @@ const modeLabels = {
 document.getElementById('btnPost').addEventListener('click', async () => {
     const mode = document.querySelector('input[name="postMode"]:checked').value;
 
-    // 포스팅이 포함된 모드는 예약발행 날짜 검증
-    if (mode !== 'generate' && !validateScheduleBeforeRun()) {
+    // 예약발행 날짜 검증
+    if (!validateScheduleBeforeRun()) {
         return;
     }
 
     // 실행 확인
-    if (!confirm(`[${modeLabels[mode]}] 모드로 실행하시겠습니까?`)) {
+    const overrideKw = document.getElementById('overrideKeyword').value.trim();
+    const kwMsg = overrideKw ? `\n키워드: "${overrideKw}"` : '\n키워드: 자동 선택';
+    if (!confirm(`[${modeLabels[mode]}] 모드로 실행하시겠습니까?${kwMsg}`)) {
         return;
     }
 
-    // 실행 전 현재 UI의 발행 모드 설정을 자동 저장
+    // 실행 전 현재 UI의 발행 모드 설정 + 단독 키워드를 자동 저장
     const currentConfig = await window.api.config.load();
     currentConfig.scheduleMode = document.querySelector('input[name="scheduleMode"]:checked')?.value || 'instant';
     currentConfig.scheduleDate = document.getElementById('cfgScheduleDate').value || '';
     currentConfig.scheduleHour = document.getElementById('cfgScheduleHour').value || '';
     currentConfig.scheduleMinute = document.getElementById('cfgScheduleMinute').value || '';
+    currentConfig.overrideKeyword = overrideKw;
     await window.api.config.save(currentConfig);
 
     document.getElementById('postLog').innerHTML = '';
     setRunning(true);
 
-    if (mode === 'generate') {
-        await window.api.script.generate();
-    } else if (mode === 'auto') {
+    if (mode === 'auto') {
         const result = await window.api.result.load();
-        if (result.exists) {
+        if (result.exists && !overrideKw) {
             if (confirm('임시 저장된 글이 있습니다.\n\n확인 → 이 글을 바로 포스팅\n취소 → 새로 생성 후 포스팅')) {
                 await window.api.script.postDraft();
             } else {
@@ -259,8 +258,6 @@ document.getElementById('btnPost').addEventListener('click', async () => {
             return;
         }
         await window.api.script.autoAll(selectedIds);
-    } else {
-        await window.api.script.post();
     }
 });
 

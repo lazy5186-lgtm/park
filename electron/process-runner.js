@@ -51,7 +51,8 @@ function buildEnv(config, accountOverride) {
         OVERLAY_KAKAO_ID: config.overlay?.kakaoId || 'loandr_',
         OVERLAY_PHONE: config.overlay?.phone || '010-8442-4224',
         IMAGE_COUNT: String(config.imageCount || 0),
-        USER_DATA_DIR: getUserDataDir()
+        USER_DATA_DIR: getUserDataDir(),
+        OVERRIDE_KEYWORD: config.overrideKeyword || ''
     };
 }
 

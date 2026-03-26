@@ -212,63 +212,72 @@ async function generateArticle() {
         // 1. 프롬프트 파일 읽기
         const promptContent = fs.readFileSync(PROMPT_FILE_PATH, 'utf-8');
 
-        // 2. 키워드 풀 추출
-        let keywordPool = [];
-
-        // 프롬프트에서 기본 키워드 로드 (있으면)
-        const keywordMatch = promptContent.match(/당신의 전문 분야 키워드:\s*(.+)/);
-        if (keywordMatch && keywordMatch[1]) {
-            keywordPool = keywordMatch[1].split(',').map(k => k.trim()).filter(k => k.length > 0);
-        }
-
-        // 삭제된 키워드 필터링
-        try {
-            const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
-            if (fs.existsSync(removedPath)) {
-                const removed = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
-                keywordPool = keywordPool.filter(k => !removed.includes(k));
-            }
-        } catch (e) { /* ignore */ }
-
-        // 커스텀 키워드 추가
-        try {
-            const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
-            if (fs.existsSync(customPath)) {
-                const custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
-                if (Array.isArray(custom)) {
-                    keywordPool = [...keywordPool, ...custom.filter(k => k && !keywordPool.includes(k))];
-                }
-            }
-        } catch (e) { /* ignore */ }
-
-        if (keywordPool.length === 0) {
-            throw new Error('사용 가능한 키워드가 없습니다. 대시보드에서 키워드를 추가해주세요.');
-        }
-
-        // 3. 랜덤 키워드 선택 (사이클 관리)
+        // 2. 키워드 결정: 단독 키워드가 있으면 그것만 사용
+        let randomKeyword;
+        const overrideKeyword = (process.env.OVERRIDE_KEYWORD || '').trim();
         const usedKeywordsPath = path.join(USER_DATA_DIR, 'used_keywords.json');
         let usedKeywords = [];
-        if (fs.existsSync(usedKeywordsPath)) {
-            try {
-                usedKeywords = JSON.parse(fs.readFileSync(usedKeywordsPath, 'utf-8'));
-            } catch (e) {
-                usedKeywords = [];
+
+        if (overrideKeyword) {
+            randomKeyword = overrideKeyword;
+            console.log(`단독 키워드 사용: [${randomKeyword}]`);
+        } else {
+            // 키워드 풀 추출
+            let keywordPool = [];
+
+            // 프롬프트에서 기본 키워드 로드 (있으면)
+            const keywordMatch = promptContent.match(/당신의 전문 분야 키워드:\s*(.+)/);
+            if (keywordMatch && keywordMatch[1]) {
+                keywordPool = keywordMatch[1].split(',').map(k => k.trim()).filter(k => k.length > 0);
             }
+
+            // 삭제된 키워드 필터링
+            try {
+                const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
+                if (fs.existsSync(removedPath)) {
+                    const removed = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
+                    keywordPool = keywordPool.filter(k => !removed.includes(k));
+                }
+            } catch (e) { /* ignore */ }
+
+            // 커스텀 키워드 추가
+            try {
+                const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
+                if (fs.existsSync(customPath)) {
+                    const custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
+                    if (Array.isArray(custom)) {
+                        keywordPool = [...keywordPool, ...custom.filter(k => k && !keywordPool.includes(k))];
+                    }
+                }
+            } catch (e) { /* ignore */ }
+
+            if (keywordPool.length === 0) {
+                throw new Error('사용 가능한 키워드가 없습니다. 대시보드에서 키워드를 추가해주세요.');
+            }
+
+            // 3. 랜덤 키워드 선택 (사이클 관리)
+            if (fs.existsSync(usedKeywordsPath)) {
+                try {
+                    usedKeywords = JSON.parse(fs.readFileSync(usedKeywordsPath, 'utf-8'));
+                } catch (e) {
+                    usedKeywords = [];
+                }
+            }
+
+            // 아직 사용하지 않은 키워드 필터링
+            let unusedKeywords = keywordPool.filter(k => !usedKeywords.includes(k));
+
+            // 모든 키워드를 다 사용했다면 (1사이클 완료) 배열 비우기
+            if (unusedKeywords.length === 0) {
+                console.log('--- 1사이클(모든 키워드)을 모두 사용했습니다. 사이클을 초기화합니다. ---');
+                usedKeywords = [];
+                unusedKeywords = [...keywordPool];
+            }
+
+            // 사용 안 한 키워드 중 하나 선택
+            randomKeyword = unusedKeywords[Math.floor(Math.random() * unusedKeywords.length)];
+            console.log(`선택된 랜덤 키워드: [${randomKeyword}] (남은 키워드 개수: ${unusedKeywords.length - 1})`);
         }
-
-        // 아직 사용하지 않은 키워드 필터링
-        let unusedKeywords = keywordPool.filter(k => !usedKeywords.includes(k));
-
-        // 모든 키워드를 다 사용했다면 (1사이클 완료) 배열 비우기
-        if (unusedKeywords.length === 0) {
-            console.log('--- 1사이클(모든 키워드)을 모두 사용했습니다. 사이클을 초기화합니다. ---');
-            usedKeywords = [];
-            unusedKeywords = [...keywordPool];
-        }
-
-        // 사용 안 한 키워드 중 하나 선택
-        const randomKeyword = unusedKeywords[Math.floor(Math.random() * unusedKeywords.length)];
-        console.log(`선택된 랜덤 키워드: [${randomKeyword}] (남은 키워드 개수: ${unusedKeywords.length - 1})`);
 
         // 키워드 사용 기록은 글 생성 성공 후에만 저장 (아래 result.json 생성 후)
 
@@ -628,10 +637,14 @@ ${imageDeduplicationNote}
         const resultJsonPath = path.join(__dirname, 'result.json');
         fs.writeFileSync(resultJsonPath, JSON.stringify(resultJson, null, 2), 'utf-8');
 
-        // 글 생성 성공 → 키워드를 사용 기록에 추가
-        usedKeywords.push(randomKeyword);
-        fs.writeFileSync(usedKeywordsPath, JSON.stringify(usedKeywords, null, 2), 'utf-8');
-        console.log(`키워드 [${randomKeyword}] 사용 완료 기록됨`);
+        // 글 생성 성공 → 키워드를 사용 기록에 추가 (단독 키워드는 사이클 기록 제외)
+        if (!overrideKeyword) {
+            usedKeywords.push(randomKeyword);
+            fs.writeFileSync(usedKeywordsPath, JSON.stringify(usedKeywords, null, 2), 'utf-8');
+            console.log(`키워드 [${randomKeyword}] 사용 완료 기록됨`);
+        } else {
+            console.log(`단독 키워드 [${randomKeyword}] — 사이클 기록에 추가하지 않음`);
+        }
 
         // 키워드 히스토리에 새 글 기록 (중복 방지용)
         const updatedHistory = loadKeywordHistory();
