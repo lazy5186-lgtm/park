@@ -1,13 +1,20 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+
+// Windows 콘솔 인코딩을 UTF-8로 설정 (한글 깨짐 방지)
+if (process.platform === 'win32') {
+    try { execSync('chcp 65001', { stdio: 'ignore' }); } catch (e) {}
+}
 const { loadConfig, saveConfig, loadKeywords, resetKeywords, removeKeyword, saveCustomKeywords, loadHistory,
     loadNaverAccounts, addNaverAccount, removeNaverAccount, selectNaverAccount,
     getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies } = require('./config-manager');
 const { runScript, stopProcess, isRunning } = require('./process-runner');
 const { getPublicIP } = require('./ip-checker');
 const ipChanger = require('./ip-changer');
+const adbInstaller = require('./adb-installer');
 
 const os = require('os');
 
@@ -58,8 +65,25 @@ function createWindow() {
     mainWindow.setMenuBarVisibility(false);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     createWindow();
+
+    // ADB 자동 설치 (없으면 다운로드)
+    if (!adbInstaller.isAdbInstalled()) {
+        console.log('ADB가 설치되어 있지 않습니다. 자동 설치를 시작합니다...');
+        mainWindow?.webContents.once('did-finish-load', () => {
+            mainWindow?.webContents.send('adb:installStart');
+        });
+        const result = await adbInstaller.installAdb((msg) => {
+            console.log(`[ADB] ${msg}`);
+            mainWindow?.webContents.send('adb:installLog', { message: msg });
+        });
+        if (result.success) {
+            mainWindow?.webContents.send('adb:installDone', { success: true });
+        } else {
+            mainWindow?.webContents.send('adb:installDone', { success: false, error: result.error });
+        }
+    }
 
     // 자동 업데이트 체크
     autoUpdater.autoDownload = true;
@@ -147,8 +171,17 @@ function isResultValid() {
     }
 }
 
+// 계정 ID로 계정 정보(id, pw) 조회
+function resolveAccount(accountId) {
+    if (!accountId) return null;
+    const data = loadNaverAccounts();
+    const account = data.accounts.find(a => a.id === accountId);
+    if (account) return { id: account.id, pw: account.pw };
+    return null;
+}
+
 // 글 생성 후 포스팅으로 이어지는 공통 로직
-function generateThenPost(config, sender, label = '') {
+function generateThenPost(config, sender, label = '', accountOverride) {
     const prefix = label ? `${label}: ` : '';
     runScript('generate_article.js', config, {
         send: (channel, data) => {
@@ -156,7 +189,7 @@ function generateThenPost(config, sender, label = '') {
                 if (isResultValid()) {
                     sender.send('script:log', { type: 'info', data: `\n${prefix}글 생성 완료! 5초 후 포스팅 시작...\n` });
                     setTimeout(() => {
-                        runScript('3.post.js', config, sender);
+                        runScript('3.post.js', config, sender, accountOverride);
                     }, 5000);
                 } else {
                     sender.send('script:log', { type: 'stderr', data: '\n글 생성에 실패했습니다. 포스팅을 중단합니다.\n' });
@@ -166,7 +199,7 @@ function generateThenPost(config, sender, label = '') {
                 sender.send(channel, data);
             }
         }
-    });
+    }, accountOverride);
 }
 
 ipcMain.handle('script:post', (event) => {
@@ -183,7 +216,7 @@ ipcMain.handle('script:post', (event) => {
     return { started: true };
 });
 
-ipcMain.handle('script:postDraft', (event) => {
+ipcMain.handle('script:postDraft', (event, accountId) => {
     const config = loadConfig();
     const sender = event.sender;
 
@@ -193,17 +226,19 @@ ipcMain.handle('script:postDraft', (event) => {
         return { started: false };
     }
 
-    sender.send('script:log', { type: 'info', data: '임시 저장된 글을 포스팅합니다...\n' });
-    runScript('3.post.js', config, sender);
+    const accountOverride = resolveAccount(accountId);
+    sender.send('script:log', { type: 'info', data: `임시 저장된 글을 포스팅합니다... (계정: ${accountOverride?.id || '기본'})\n` });
+    runScript('3.post.js', config, sender, accountOverride);
     return { started: true };
 });
 
-ipcMain.handle('script:auto', (event) => {
+ipcMain.handle('script:auto', (event, accountId) => {
     const config = loadConfig();
     const sender = event.sender;
 
-    sender.send('script:log', { type: 'info', data: '자동 모드: 글 생성 시작...\n' });
-    generateThenPost(config, sender, '자동 모드');
+    const accountOverride = resolveAccount(accountId);
+    sender.send('script:log', { type: 'info', data: `자동 모드: 글 생성 시작... (계정: ${accountOverride?.id || '기본'})\n` });
+    generateThenPost(config, sender, '자동 모드', accountOverride);
     return { started: true };
 });
 
@@ -331,6 +366,22 @@ ipcMain.handle('keywords:remove', (_event, keyword) => {
 
 ipcMain.handle('history:load', () => {
     return loadHistory();
+});
+
+// ---- ADB 설치 ----
+ipcMain.handle('adb:status', () => {
+    return { installed: adbInstaller.isAdbInstalled() };
+});
+
+ipcMain.handle('adb:install', async (event) => {
+    const sender = event.sender;
+    if (adbInstaller.isAdbInstalled()) {
+        return { success: true, alreadyInstalled: true };
+    }
+    const result = await adbInstaller.installAdb((msg) => {
+        sender.send('adb:installLog', { message: msg });
+    });
+    return result;
 });
 
 // ---- IP 변경 ----

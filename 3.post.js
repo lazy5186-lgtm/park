@@ -65,6 +65,24 @@ function createKSTDate(year, month, day, hour = 0, minute = 0, second = 0) {
     return kstTime;
 }
 
+// User-Agent 풀 (계정마다 랜덤 선택)
+const USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+];
+
+function getRandomUserAgent() {
+    return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
 // 설정 로드
 const postSettings = loadPostSettings();
 const POST_ID = postSettings.POST_ID;
@@ -2134,7 +2152,7 @@ async function fetchBlogId(cookieString) {
                 'cookie': cookieString,
                 'pragma': 'no-cache',
                 'referer': 'https://section.blog.naver.com/BlogHome.naver',
-                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
+                'user-agent': getRandomUserAgent()
             }
         });
 
@@ -2228,14 +2246,28 @@ async function visitNaver() {
         return;
     }
 
-    // 임시 userDataDir 생성
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'naver-post-'));
+    // 계정별 랜덤 User-Agent 선택
+    const selectedUA = getRandomUserAgent();
+    console.log(`🌐 User-Agent: ${selectedUA.substring(0, 60)}...`);
+
+    // 계정별 임시 userDataDir 생성 (독립된 브라우저 프로필)
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `naver-post-${POST_ID}-`));
     console.log(`임시 프로필 디렉토리 생성: ${tempDir}`);
+
+    // 랜덤 화면 크기 (핑거프린트 다양화)
+    const screenSizes = [
+        { width: 1920, height: 1080 },
+        { width: 1536, height: 864 },
+        { width: 1440, height: 900 },
+        { width: 1366, height: 768 },
+        { width: 1280, height: 720 },
+    ];
+    const randomScreen = screenSizes[Math.floor(Math.random() * screenSizes.length)];
 
     // Chrome 경로 찾기
     const chromePath = findChromePath();
 
-    // 브라우저 실행 (자동화 탐지 우회 설정)
+    // 브라우저 실행 (자동화 탐지 우회 설정 강화)
     const browser = await puppeteer.launch({
         headless: false,
         defaultViewport: null,
@@ -2246,7 +2278,7 @@ async function visitNaver() {
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-web-security",
-            "--disable-features=VizDisplayCompositor",
+            "--disable-features=VizDisplayCompositor,IsolateOrigins,site-per-process",
             "--disable-blink-features=AutomationControlled", // 자동화 탐지 방지
             "--no-first-run",
             "--disable-default-apps",
@@ -2256,7 +2288,13 @@ async function visitNaver() {
             "--disable-renderer-backgrounding",
             "--disable-backgrounding-occluded-windows",
             "--disable-ipc-flooding-protection",
-            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "--disable-component-update",
+            "--disable-domain-reliability",
+            "--disable-features=TranslateUI",
+            "--metrics-recording-only",
+            "--mute-audio",
+            `--window-size=${randomScreen.width},${randomScreen.height}`,
+            `--user-agent=${selectedUA}`,
         ],
     });
 
@@ -2283,16 +2321,24 @@ async function visitNaver() {
             }
         });
 
-        // 자동화 탐지 우회 스크립트 주입
+        // 자동화 탐지 우회 스크립트 주입 (강화)
         await page.evaluateOnNewDocument(() => {
             // webdriver 속성 제거
             Object.defineProperty(navigator, "webdriver", {
                 get: () => undefined,
             });
 
-            // plugins 배열 추가
+            // plugins 배열을 실제 브라우저처럼 구성
             Object.defineProperty(navigator, "plugins", {
-                get: () => [1, 2, 3, 4, 5],
+                get: () => {
+                    const plugins = [
+                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+                        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+                    ];
+                    plugins.length = 3;
+                    return plugins;
+                },
             });
 
             // languages 설정
@@ -2300,18 +2346,47 @@ async function visitNaver() {
                 get: () => ["ko-KR", "ko", "en-US", "en"],
             });
 
+            // hardwareConcurrency 랜덤화
+            Object.defineProperty(navigator, "hardwareConcurrency", {
+                get: () => [4, 8, 12, 16][Math.floor(Math.random() * 4)],
+            });
+
+            // deviceMemory 랜덤화
+            Object.defineProperty(navigator, "deviceMemory", {
+                get: () => [4, 8, 16][Math.floor(Math.random() * 3)],
+            });
+
+            // platform 설정
+            Object.defineProperty(navigator, "platform", {
+                get: () => "Win32",
+            });
+
+            // Chrome 객체 추가 (자동화 탐지 우회)
+            window.chrome = {
+                runtime: {},
+                loadTimes: function() {},
+                csi: function() {},
+                app: {},
+            };
+
             // permissions 처리
             const originalQuery = window.navigator.permissions.query;
-            return (window.navigator.permissions.query = (parameters) =>
+            window.navigator.permissions.query = (parameters) =>
                 parameters.name === "notifications"
                     ? Promise.resolve({ state: Notification.permission })
-                    : originalQuery(parameters));
+                    : originalQuery(parameters);
+
+            // WebGL Vendor/Renderer 랜덤화
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(param) {
+                if (param === 37445) return 'Google Inc. (Intel)';
+                if (param === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)';
+                return getParameter.call(this, param);
+            };
         });
 
-        // User-Agent 설정
-        await page.setUserAgent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        );
+        // User-Agent 설정 (랜덤 선택된 UA 사용)
+        await page.setUserAgent(selectedUA);
 
         // 추가 헤더 설정
         await page.setExtraHTTPHeaders({

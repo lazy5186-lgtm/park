@@ -162,19 +162,17 @@ async function loadAccountCheckboxes() {
                 chip.style.color = 'var(--text-secondary, #888)';
             }
         });
-        chip.addEventListener('click', (e) => {
-            if (e.target !== cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
-        });
         list.appendChild(chip);
     });
 }
 
-// autoAll 모드 선택 시 계정 선택 영역 표시/숨김
+// 모드 선택 시 계정 선택 영역 표시/숨김
 document.querySelectorAll('input[name="postMode"]').forEach(radio => {
     radio.addEventListener('change', () => {
         const area = document.getElementById('accountSelectArea');
-        area.style.display = radio.value === 'autoAll' && radio.checked ? 'block' : 'none';
-        if (radio.value === 'autoAll' && radio.checked) loadAccountCheckboxes();
+        const show = (radio.value === 'auto' || radio.value === 'autoAll') && radio.checked;
+        area.style.display = show ? 'block' : 'none';
+        if (show) loadAccountCheckboxes();
     });
 });
 
@@ -184,10 +182,6 @@ document.getElementById('accountSelectAll').addEventListener('change', (e) => {
         cb.checked = e.target.checked;
         cb.dispatchEvent(new Event('change'));
     });
-});
-document.querySelector('label:has(#accountSelectAll)').addEventListener('click', (e) => {
-    const cb = document.getElementById('accountSelectAll');
-    if (e.target !== cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
 });
 
 // 예약발행 날짜 검증
@@ -238,27 +232,17 @@ document.getElementById('btnPost').addEventListener('click', async () => {
     document.getElementById('postLog').innerHTML = '';
     setRunning(true);
 
-    if (mode === 'auto') {
-        const result = await window.api.result.load();
-        if (result.exists && !overrideKw) {
-            if (confirm('임시 저장된 글이 있습니다.\n\n확인 → 이 글을 바로 포스팅\n취소 → 새로 생성 후 포스팅')) {
-                await window.api.script.postDraft();
-            } else {
-                await window.api.script.auto();
-            }
-        } else {
-            await window.api.script.auto();
-        }
-    } else if (mode === 'autoAll') {
-        const checked = document.querySelectorAll('#accountCheckboxList input[type="checkbox"]:checked');
-        const selectedIds = Array.from(checked).map(cb => cb.value);
-        if (selectedIds.length === 0) {
-            alert('실행할 계정을 선택해주세요.');
-            setRunning(false);
-            return;
-        }
-        await window.api.script.autoAll(selectedIds);
+    // 공통: 선택된 계정 목록
+    const checked = document.querySelectorAll('#accountCheckboxList input[type="checkbox"]:checked');
+    const selectedIds = Array.from(checked).map(cb => cb.value);
+    if (selectedIds.length === 0) {
+        alert('실행할 계정을 선택해주세요.');
+        setRunning(false);
+        return;
     }
+
+    // 두 모드 모두 선택 계정 순차 실행 (계정별 IP변경 + 글생성 + 포스팅)
+    await window.api.script.autoAll(selectedIds);
 });
 
 document.getElementById('btnStopPost').addEventListener('click', async () => {
@@ -693,6 +677,23 @@ document.getElementById('btnNaverLogin').addEventListener('click', async () => {
 
 window.api.naver.onLoginLog((data) => {
     appendLog('postLog', data);
+});
+
+// ===== ADB 자동 설치 =====
+window.api.adb.onInstallStart(() => {
+    showToast('ADB가 설치되어 있지 않아 자동 설치를 시작합니다...', 'info');
+});
+
+window.api.adb.onInstallLog((data) => {
+    console.log('[ADB 설치]', data.message);
+});
+
+window.api.adb.onInstallDone((data) => {
+    if (data.success) {
+        showToast('ADB 설치가 완료되었습니다.', 'success');
+    } else {
+        showToast(`ADB 설치 실패: ${data.error}`, 'error');
+    }
 });
 
 // ===== Init =====

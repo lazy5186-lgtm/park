@@ -8,8 +8,8 @@ contextBridge.exposeInMainWorld('api', {
     script: {
         generate: () => ipcRenderer.invoke('script:generate'),
         post: () => ipcRenderer.invoke('script:post'),
-        postDraft: () => ipcRenderer.invoke('script:postDraft'),
-        auto: () => ipcRenderer.invoke('script:auto'),
+        postDraft: (accountId) => ipcRenderer.invoke('script:postDraft', accountId),
+        auto: (accountId) => ipcRenderer.invoke('script:auto', accountId),
         autoAll: (selectedIds) => ipcRenderer.invoke('script:autoAll', selectedIds),
         stop: () => ipcRenderer.invoke('script:stop'),
         onLog: (callback) => {
@@ -56,6 +56,25 @@ contextBridge.exposeInMainWorld('api', {
             const handler = (_event, data) => callback(data);
             ipcRenderer.on('naver:loginLog', handler);
             return () => ipcRenderer.removeListener('naver:loginLog', handler);
+        }
+    },
+    adb: {
+        status: () => ipcRenderer.invoke('adb:status'),
+        install: () => ipcRenderer.invoke('adb:install'),
+        onInstallStart: (callback) => {
+            const handler = (_event) => callback();
+            ipcRenderer.on('adb:installStart', handler);
+            return () => ipcRenderer.removeListener('adb:installStart', handler);
+        },
+        onInstallLog: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('adb:installLog', handler);
+            return () => ipcRenderer.removeListener('adb:installLog', handler);
+        },
+        onInstallDone: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('adb:installDone', handler);
+            return () => ipcRenderer.removeListener('adb:installDone', handler);
         }
     },
     openExternal: (url) => ipcRenderer.invoke('open:external', url),
