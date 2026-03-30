@@ -2018,15 +2018,34 @@ async function writePost(page, browser) {
                     await frame.click('button[data-testid="seOnePublishBtn"]');
                     console.log('✅ 발행 완료!');
 
-                    // 4. URL 캡처 시도
+                    // 4. URL 캡처 시도 (발행된 글의 실제 URL)
                     let capturedUrl = '';
                     try {
-                        // 발행 후 리다이렉트 대기
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                        const currentUrl = page.url();
-                        if (currentUrl && currentUrl.includes('blog.naver.com')) {
-                            capturedUrl = currentUrl;
-                            console.log(`🔗 포스팅 URL 캡처: ${capturedUrl}`);
+                        // 발행 후 리다이렉트 완료 대기 (최대 15초 폴링)
+                        for (let urlTry = 0; urlTry < 15; urlTry++) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            const currentUrl = page.url();
+                            // 에디터/Write URL이 아닌 실제 포스트 URL인지 확인
+                            if (currentUrl && currentUrl.includes('blog.naver.com') &&
+                                !currentUrl.includes('Redirect=Write') &&
+                                !currentUrl.includes('/postwrite') &&
+                                !currentUrl.includes('/editor') &&
+                                /\/\d{10,}/.test(currentUrl)) {
+                                capturedUrl = currentUrl;
+                                console.log(`🔗 포스팅 URL 캡처: ${capturedUrl}`);
+                                break;
+                            }
+                        }
+                        if (!capturedUrl) {
+                            // 폴링 실패 시 BLOG_ID + logNo로 URL 직접 구성 시도
+                            const finalUrl = page.url();
+                            const logNoMatch = finalUrl && finalUrl.match(/logNo=(\d+)/);
+                            if (logNoMatch && BLOG_ID) {
+                                capturedUrl = `https://blog.naver.com/${BLOG_ID}/${logNoMatch[1]}`;
+                                console.log(`🔗 포스팅 URL 구성: ${capturedUrl}`);
+                            } else {
+                                console.log('⚠️ 발행된 글 URL을 캡처하지 못했습니다.');
+                            }
                         }
                     } catch (urlError) {
                         console.log('URL 캡처 실패 (무시됨):', urlError.message);
