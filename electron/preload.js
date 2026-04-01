@@ -9,7 +9,6 @@ contextBridge.exposeInMainWorld('api', {
         generate: () => ipcRenderer.invoke('script:generate'),
         post: () => ipcRenderer.invoke('script:post'),
         postDraft: (accountId) => ipcRenderer.invoke('script:postDraft', accountId),
-        auto: (accountId) => ipcRenderer.invoke('script:auto', accountId),
         autoAll: (selectedIds) => ipcRenderer.invoke('script:autoAll', selectedIds),
         stop: () => ipcRenderer.invoke('script:stop'),
         onLog: (callback) => {

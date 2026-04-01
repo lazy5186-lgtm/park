@@ -339,12 +339,17 @@ ${deduplicationPrompt}`;
         const responseText = result.text;
 
         // 재시도 포함 단일 이미지 생성 함수 (새 SDK 방식)
+        // 모든 이미지 프롬프트에 강제 적용되는 no-text 접미사
+        const NO_TEXT_SUFFIX = '. Purely visual, photographic only. Absolutely NO text, NO letters, NO numbers, NO words, NO typography, NO watermarks, NO captions, NO labels, NO signs, NO writing of any kind anywhere in the image.';
+
         async function generateSingleImage(ai, prompt, maxRetries = 5) {
+            // 이미지 모델에 전달되기 전 모든 프롬프트에 no-text 지시를 강제 추가
+            const safePrompt = prompt.replace(/NO text[^.]*/gi, '').trimEnd().replace(/,\s*$/, '') + NO_TEXT_SUFFIX;
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
                     const imageResult = await ai.models.generateContent({
                         model: process.env.IMAGE_MODEL || "gemini-2.5-flash-image",
-                        contents: prompt,
+                        contents: safePrompt,
                         config: {
                             imageConfig: {
                                 aspectRatio: "16:9"
@@ -402,16 +407,16 @@ ${imageDeduplicationNote}
         } catch (e) {
             console.error("이미지 프롬프트 JSON 분석 실패, 기본값 사용", e.message);
             generatedImgPrompts = [
-                `Trustworthy and hopeful professional photography about ${randomKeyword}, blue and gold tone, realistic`,
-                `Professional infographic style element representing ${randomKeyword}, clean and modern layout`,
-                `Hopeful business conversation about ${randomKeyword}, smiling professionals, natural lighting`,
-                `Close-up of financial documents and calculator related to ${randomKeyword}, warm office setting`,
-                `Professional consultant explaining ${randomKeyword} concept, confident and approachable`,
-                `Modern cityscape with apartment buildings representing ${randomKeyword}, golden hour lighting`,
-                `Hands signing important financial contract for ${randomKeyword}, detailed close-up`,
-                `Happy family in front of their home celebrating ${randomKeyword} success, warm atmosphere`,
-                `Digital financial dashboard showing ${randomKeyword} data, clean UI design`,
-                `Professional handshake sealing ${randomKeyword} deal, trust and partnership concept`
+                `Trustworthy and hopeful professional photography about ${randomKeyword}, blue and gold tone, purely visual, photographic only`,
+                `Professional infographic style visual element representing ${randomKeyword}, clean and modern layout, purely visual`,
+                `Hopeful business conversation scene about ${randomKeyword}, smiling Korean professionals, natural lighting, purely visual`,
+                `Close-up of financial documents and calculator related to ${randomKeyword}, warm office setting, purely visual`,
+                `Korean professional consultant in meeting about ${randomKeyword}, confident and approachable, purely visual`,
+                `Modern cityscape with apartment buildings representing ${randomKeyword}, golden hour lighting, purely visual`,
+                `Hands signing important financial contract for ${randomKeyword}, detailed close-up, purely visual`,
+                `Happy Korean family in front of their home celebrating ${randomKeyword} success, warm atmosphere, purely visual`,
+                `Clean modern office desk with financial planning tools related to ${randomKeyword}, minimalist style, purely visual`,
+                `Professional handshake sealing ${randomKeyword} agreement, trust and partnership concept, purely visual`
             ];
         }
 

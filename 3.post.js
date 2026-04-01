@@ -18,6 +18,9 @@ const { login, loadLoginData, getCookieFilePath } = require('./lib/login-module'
 const { checkAndHandleBlogStatus, extractBlogId, updateBlogIdInCookies } = require('./lib/blog-status-module');
 const { handleAccountProtection } = require('./lib/account-protection-module');
 
+// 브라우저 종료 플래그 (writePost와 visitNaver 양쪽에서 접근 가능하도록 모듈 레벨에 선언)
+let isShuttingDown = false;
+
 // ========================================
 // 🎯 설정 파일 선택 변수
 // ========================================
@@ -1610,32 +1613,62 @@ async function writePost(page, browser) {
                         // 즉시 발행 라디오 선택 (radio_time1) - frame과 page 모두 시도
                         let instantSelected = false;
 
-                        // 방법 1: frame에서 data-testid로 찾기
-                        instantSelected = await frame.evaluate(() => {
-                            const radio = document.querySelector('[data-testid="nowTimeRadioBtn"]')
-                                || document.querySelector('input#radio_time1')
-                                || document.querySelector('label[for="radio_time1"]');
-                            if (radio) { radio.click(); return true; }
-                            return false;
-                        }).catch(() => false);
+                        // 즉시 발행 라디오 셀렉터 목록
+                        const instantRadioSelectors = [
+                            '[data-testid="nowTimeRadioBtn"]',
+                            'input#radio_time1',
+                            'label[for="radio_time1"]',
+                            'input[name="publishTime"][value="now"]',
+                            'input[name="publishTime"][value="current"]',
+                            'input[type="radio"][id*="now"]',
+                            'input[type="radio"][id*="time1"]',
+                        ];
 
-                        // 방법 2: page(메인)에서 찾기
+                        // 방법 1: frame에서 셀렉터로 찾기
+                        instantSelected = await frame.evaluate((selectors) => {
+                            for (const sel of selectors) {
+                                const el = document.querySelector(sel);
+                                if (el) { el.click(); return true; }
+                            }
+                            return false;
+                        }, instantRadioSelectors).catch(() => false);
+
+                        // 방법 2: page에서 셀렉터로 찾기
                         if (!instantSelected) {
-                            instantSelected = await page.evaluate(() => {
-                                const radio = document.querySelector('[data-testid="nowTimeRadioBtn"]')
-                                    || document.querySelector('input#radio_time1')
-                                    || document.querySelector('label[for="radio_time1"]');
-                                if (radio) { radio.click(); return true; }
+                            instantSelected = await page.evaluate((selectors) => {
+                                for (const sel of selectors) {
+                                    const el = document.querySelector(sel);
+                                    if (el) { el.click(); return true; }
+                                }
+                                return false;
+                            }, instantRadioSelectors).catch(() => false);
+                        }
+
+                        // 방법 3: frame에서 텍스트("현재", "즉시")로 label/라디오 찾기
+                        if (!instantSelected) {
+                            instantSelected = await frame.evaluate(() => {
+                                const labels = document.querySelectorAll('label');
+                                for (const label of labels) {
+                                    const text = label.textContent.trim();
+                                    if (text === '현재' || text === '즉시' || text === '즉시발행' || text === '즉시 발행') {
+                                        label.click();
+                                        return true;
+                                    }
+                                }
                                 return false;
                             }).catch(() => false);
                         }
 
-                        // 방법 3: page에서 label 텍스트로 찾기
+                        // 방법 4: page에서 텍스트로 label/라디오 찾기
                         if (!instantSelected) {
                             instantSelected = await page.evaluate(() => {
                                 const labels = document.querySelectorAll('label');
                                 for (const label of labels) {
-                                    if (label.textContent.trim() === '현재') { label.click(); return true; }
+                                    const text = label.textContent.trim();
+                                    if (text === '현재' || text === '즉시' || text === '즉시발행' || text === '즉시 발행') {
+                                        label.click();
+                                        return true;
+                                    }
                                 }
                                 return false;
                             }).catch(() => false);
@@ -2013,10 +2046,74 @@ async function writePost(page, browser) {
                         }
                     }
 
-                    // 3. 최종 발행 버튼 클릭
-                    await frame.waitForSelector('button[data-testid="seOnePublishBtn"]', { timeout: 3000 });
-                    await frame.click('button[data-testid="seOnePublishBtn"]');
-                    console.log('✅ 발행 완료!');
+                    // 3. 최종 발행 버튼 클릭 (다중 셀렉터 + frame/page 양쪽 시도)
+                    const finalPublishSelectors = [
+                        'button[data-testid="seOnePublishBtn"]',
+                        'button[data-testid="publishBtn"]',
+                        'button[data-click-area="tpb.confirm"]',
+                        '.confirm_btn__',
+                    ];
+                    let finalPublishClicked = false;
+
+                    // 방법 1: frame에서 셀렉터로 찾기
+                    for (const sel of finalPublishSelectors) {
+                        try {
+                            await frame.waitForSelector(sel, { timeout: 2000 });
+                            await frame.click(sel);
+                            finalPublishClicked = true;
+                            console.log(`✅ 발행 완료! (frame: ${sel})`);
+                            break;
+                        } catch (_) {}
+                    }
+
+                    // 방법 2: page에서 셀렉터로 찾기
+                    if (!finalPublishClicked) {
+                        for (const sel of finalPublishSelectors) {
+                            try {
+                                await page.waitForSelector(sel, { timeout: 2000 });
+                                await page.click(sel);
+                                finalPublishClicked = true;
+                                console.log(`✅ 발행 완료! (page: ${sel})`);
+                                break;
+                            } catch (_) {}
+                        }
+                    }
+
+                    // 방법 3: frame에서 텍스트("발행")로 버튼 찾기
+                    if (!finalPublishClicked) {
+                        finalPublishClicked = await frame.evaluate(() => {
+                            const buttons = document.querySelectorAll('button');
+                            for (const btn of buttons) {
+                                const text = btn.textContent.trim();
+                                if (text === '발행' || text === '발행하기' || text === '등록') {
+                                    btn.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }).catch(() => false);
+                        if (finalPublishClicked) console.log('✅ 발행 완료! (frame 텍스트 검색)');
+                    }
+
+                    // 방법 4: page에서 텍스트("발행")로 버튼 찾기
+                    if (!finalPublishClicked) {
+                        finalPublishClicked = await page.evaluate(() => {
+                            const buttons = document.querySelectorAll('button');
+                            for (const btn of buttons) {
+                                const text = btn.textContent.trim();
+                                if (text === '발행' || text === '발행하기' || text === '등록') {
+                                    btn.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }).catch(() => false);
+                        if (finalPublishClicked) console.log('✅ 발행 완료! (page 텍스트 검색)');
+                    }
+
+                    if (!finalPublishClicked) {
+                        throw new Error('최종 발행 버튼을 찾을 수 없습니다.');
+                    }
 
                     // 4. URL 캡처 시도 (발행된 글의 실제 URL)
                     let capturedUrl = '';
@@ -2062,6 +2159,7 @@ async function writePost(page, browser) {
 
                     // 5. 브라우저 종료
                     console.log('발행이 완료되어 브라우저를 종료합니다.');
+                    isShuttingDown = true;
                     try {
                         await browser.close();
                     } catch (closeError) {
@@ -2074,65 +2172,38 @@ async function writePost(page, browser) {
 
                 } catch (settingsError) {
                     console.error('발행 설정 처리 중 오류:', settingsError.message);
-                    // 발행 설정 오류 시 브라우저 종료 및 프로그램 강제 종료
+                    isShuttingDown = true;
                     try {
                         await browser.close();
                         console.log('브라우저가 정상적으로 종료되었습니다.');
                     } catch (closeError) {
                         console.log('브라우저 종료 중 오류 (무시됨):', closeError.message);
                     }
-
-                    // 강제 종료를 위해 추가 대기 후 프로세스 종료
-                    console.log('5초 후 프로그램을 강제 종료합니다...');
-                    setTimeout(() => {
-                        console.log('프로그램을 강제 종료합니다.');
-                        process.exit(1);
-                    }, 5000);
-
-                    // 즉시 종료도 시도
                     process.exit(1);
                 }
 
                 // 발행 설정 처리 후 종료 (위의 try-catch 블록에서 처리됨)
             } else {
                 console.log('발행 버튼을 찾을 수 없습니다. 프로그램을 종료합니다.');
-                // 발행 버튼을 찾지 못했으므로 즉시 브라우저 종료 및 프로그램 종료
+                isShuttingDown = true;
                 try {
                     await browser.close();
                     console.log('브라우저가 정상적으로 종료되었습니다.');
                 } catch (closeError) {
                     console.log('브라우저 종료 중 오류 (무시됨):', closeError.message);
                 }
-
-                // 강제 종료를 위해 추가 대기 후 프로세스 종료
-                console.log('5초 후 프로그램을 강제 종료합니다...');
-                setTimeout(() => {
-                    console.log('프로그램을 강제 종료합니다.');
-                    process.exit(1);
-                }, 5000);
-
-                // 즉시 종료도 시도
                 process.exit(1);
             }
 
         } catch (error) {
             console.error('발행 버튼 클릭 중 오류:', error.message);
-            // 오류 발생 시에도 브라우저 종료 및 프로그램 강제 종료
+            isShuttingDown = true;
             try {
                 await browser.close();
                 console.log('브라우저가 정상적으로 종료되었습니다.');
             } catch (closeError) {
                 console.log('브라우저 종료 중 오류 (무시됨):', closeError.message);
             }
-
-            // 강제 종료를 위해 추가 대기 후 프로세스 종료
-            console.log('5초 후 프로그램을 강제 종료합니다...');
-            setTimeout(() => {
-                console.log('프로그램을 강제 종료합니다.');
-                process.exit(1);
-            }, 5000);
-
-            // 즉시 종료도 시도
             process.exit(1);
         }
 
@@ -2140,22 +2211,13 @@ async function writePost(page, browser) {
 
     } catch (error) {
         console.error("글쓰기 중 오류 발생:", error.message);
-        // 글쓰기 중 치명적 오류 발생 시 브라우저 종료 및 프로그램 강제 종료
+        isShuttingDown = true;
         try {
             await browser.close();
             console.log('브라우저가 정상적으로 종료되었습니다.');
         } catch (closeError) {
             console.log('브라우저 종료 중 오류 (무시됨):', closeError.message);
         }
-
-        // 강제 종료를 위해 추가 대기 후 프로세스 종료
-        console.log('5초 후 프로그램을 강제 종료합니다...');
-        setTimeout(() => {
-            console.log('프로그램을 강제 종료합니다.');
-            process.exit(1);
-        }, 5000);
-
-        // 즉시 종료도 시도
         process.exit(1);
     }
 }
@@ -2317,8 +2379,8 @@ async function visitNaver() {
         ],
     });
 
-    // 정상 종료 플래그
-    let isShuttingDown = false;
+    // 매 실행마다 종료 플래그 초기화 (모듈 레벨 변수 사용)
+    isShuttingDown = false;
 
     // 브라우저 종료 감지 이벤트 리스너 추가
     // 사용자가 브라우저를 수동으로 닫았을 때만 process.exit

@@ -170,7 +170,7 @@ async function loadAccountCheckboxes() {
 document.querySelectorAll('input[name="postMode"]').forEach(radio => {
     radio.addEventListener('change', () => {
         const area = document.getElementById('accountSelectArea');
-        const show = (radio.value === 'auto' || radio.value === 'autoAll') && radio.checked;
+        const show = radio.value === 'auto' && radio.checked;
         area.style.display = show ? 'block' : 'none';
         if (show) loadAccountCheckboxes();
     });
@@ -201,8 +201,7 @@ function validateScheduleBeforeRun() {
 
 // 모드별 확인 메시지
 const modeLabels = {
-    auto: '자동 실행 (글 생성 + 포스팅)',
-    autoAll: '다중 계정 자동'
+    auto: '자동 실행 (글 생성 + 포스팅)'
 };
 
 document.getElementById('btnPost').addEventListener('click', async () => {

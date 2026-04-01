@@ -16,8 +16,10 @@
 - 전문가와 만나 문제를 해결하는 긍정적인 미래를 보여주는 비즈니스 사진
 - 실제 상황을 연상시키는 사실적인 장면
 
-# 주의사항
-- 이미지에 텍스트(글씨)를 넣지 마세요. 텍스트 없는 순수 이미지만 생성하도록 프롬프트를 작성하세요.
-- "NO text, NO letters, NO words, NO typography in the image" 를 모든 프롬프트에 포함하세요.
+# 주의사항 (반드시 준수)
+- **텍스트 완전 금지**: 이미지 안에 어떤 형태의 글자, 숫자, 문자, 워터마크, 캡션, 라벨, 간판, 로고도 포함하지 마세요.
+- 모든 프롬프트 끝에 반드시 다음 문구를 추가하세요: "Purely visual, photographic only. Absolutely NO text, NO letters, NO numbers, NO words, NO typography, NO watermarks, NO captions, NO labels, NO signs, NO writing of any kind anywhere in the image."
+- **키워드를 이미지 내 텍스트로 표현하지 마세요.** 키워드의 개념을 시각적 장면, 사물, 분위기로만 표현하세요.
 - 인물이 포함되는 프롬프트의 경우 반드시 "Korean person" 또는 "Korean professional" 등으로 한국인으로 지정하세요.
 - 고품질 사실적인 사진 스타일로 작성하세요.
+- 대시보드, 차트, 그래프 등을 묘사할 때도 그 안에 숫자나 라벨 텍스트가 보이지 않도록 "blurred", "abstract", "out of focus" 등의 표현을 사용하세요.

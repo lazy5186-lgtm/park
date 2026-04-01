@@ -232,16 +232,6 @@ ipcMain.handle('script:postDraft', (event, accountId) => {
     return { started: true };
 });
 
-ipcMain.handle('script:auto', (event, accountId) => {
-    const config = loadConfig();
-    const sender = event.sender;
-
-    const accountOverride = resolveAccount(accountId);
-    sender.send('script:log', { type: 'info', data: `자동 모드: 글 생성 시작... (계정: ${accountOverride?.id || '기본'})\n` });
-    generateThenPost(config, sender, '자동 모드', accountOverride);
-    return { started: true };
-});
-
 // 선택 계정 순차 자동 포스팅 (계정별 IP 변경 + 글 생성 + 포스팅)
 let autoAllAborted = false;
 
@@ -309,12 +299,12 @@ ipcMain.handle('script:autoAll', async (event, selectedIds) => {
 
         // 3. 포스팅 (3.post.js)
         sender.send('script:log', { type: 'info', data: `\n📤 ${account.id} - 포스팅 시작...\n` });
-        await new Promise((resolve) => {
+        const postExitCode = await new Promise((resolve) => {
             setTimeout(() => {
                 runScript('3.post.js', config, {
                     send: (channel, data) => {
                         if (channel === 'script:done') {
-                            resolve();
+                            resolve(data.code);
                         } else {
                             sender.send(channel, data);
                         }
@@ -325,12 +315,17 @@ ipcMain.handle('script:autoAll', async (event, selectedIds) => {
 
         if (autoAllAborted) break;
 
-        sender.send('script:log', { type: 'info', data: `\n✅ ${account.id} 계정 포스팅 완료!\n` });
+        if (postExitCode === 0) {
+            sender.send('script:log', { type: 'info', data: `\n✅ ${account.id} 계정 포스팅 완료!\n` });
+        } else {
+            sender.send('script:log', { type: 'stderr', data: `\n❌ ${account.id} 계정 포스팅 실패 (코드: ${postExitCode})\n` });
+        }
 
-        // 다음 계정 전 5초 대기
+        // 다음 계정 전 30~60초 랜덤 대기
         if (idx < accounts.length - 1) {
-            sender.send('script:log', { type: 'info', data: `\n⏳ 다음 계정 처리 전 5초 대기...\n` });
-            await new Promise(r => setTimeout(r, 5000));
+            const delaySec = Math.floor(Math.random() * 31) + 30; // 30~60초
+            sender.send('script:log', { type: 'info', data: `\n⏳ 다음 계정 처리 전 ${delaySec}초 대기...\n` });
+            await new Promise(r => setTimeout(r, delaySec * 1000));
         }
     }
 
