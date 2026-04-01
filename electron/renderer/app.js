@@ -166,6 +166,38 @@ async function loadAccountCheckboxes() {
     });
 }
 
+// 키워드 직접 입력 토글
+const kwToggle = document.getElementById('kwToggle');
+const kwInput = document.getElementById('overrideKeyword');
+const kwToggleLabel = document.getElementById('kwToggleLabel');
+const kwToggleTrack = document.getElementById('kwToggleTrack');
+const kwToggleThumb = document.getElementById('kwToggleThumb');
+
+kwToggle.parentElement.addEventListener('click', () => {
+    kwToggle.checked = !kwToggle.checked;
+    if (kwToggle.checked) {
+        kwInput.disabled = false;
+        kwInput.style.opacity = '1';
+        kwInput.style.background = '';
+        kwInput.placeholder = '예: 대출 금리 비교';
+        kwToggleLabel.textContent = 'ON';
+        kwToggleLabel.style.color = '#4a90d9';
+        kwToggleTrack.style.background = '#4a90d9';
+        kwToggleThumb.style.left = '18px';
+        kwInput.focus();
+    } else {
+        kwInput.disabled = true;
+        kwInput.value = '';
+        kwInput.style.opacity = '0.6';
+        kwInput.style.background = 'var(--bg-secondary, #f5f5f5)';
+        kwInput.placeholder = '키워드 풀에서 자동 선택됩니다';
+        kwToggleLabel.textContent = 'OFF';
+        kwToggleLabel.style.color = 'var(--text-secondary, #888)';
+        kwToggleTrack.style.background = '#ccc';
+        kwToggleThumb.style.left = '2px';
+    }
+});
+
 // 모드 선택 시 계정 선택 영역 표시/숨김
 document.querySelectorAll('input[name="postMode"]').forEach(radio => {
     radio.addEventListener('change', () => {
@@ -212,9 +244,14 @@ document.getElementById('btnPost').addEventListener('click', async () => {
         return;
     }
 
-    // 실행 확인
-    const overrideKw = document.getElementById('overrideKeyword').value.trim();
-    const kwMsg = overrideKw ? `\n키워드: "${overrideKw}"` : '\n키워드: 자동 선택';
+    // 실행 확인 - 토글 OFF면 키워드 무시
+    const kwOn = document.getElementById('kwToggle').checked;
+    const overrideKw = kwOn ? document.getElementById('overrideKeyword').value.trim() : '';
+    if (kwOn && !overrideKw) {
+        alert('키워드 입력이 ON 상태입니다. 키워드를 입력하거나 OFF로 전환해주세요.');
+        return;
+    }
+    const kwMsg = overrideKw ? `\n키워드: "${overrideKw}"` : '\n키워드: 키워드 풀에서 자동 선택';
     if (!confirm(`[${modeLabels[mode]}] 모드로 실행하시겠습니까?${kwMsg}`)) {
         return;
     }
