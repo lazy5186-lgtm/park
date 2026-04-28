@@ -778,8 +778,16 @@ async function writePost(page, browser) {
             }];
         }
 
-        // iframe이 로드될 때까지 대기
-        await page.waitForSelector('#mainFrame', { timeout: 10000 });
+        // iframe이 로드될 때까지 대기 (네이버 응답 지연 대비 30초)
+        try {
+            await page.waitForSelector('#mainFrame', { timeout: 30000 });
+        } catch (e) {
+            const failUrl = page.url();
+            const shotPath = `mainframe_timeout_${Date.now()}.png`;
+            try { await page.screenshot({ path: shotPath, fullPage: true }); } catch {}
+            console.error(`#mainFrame 타임아웃. 현재 URL: ${failUrl}, 스크린샷: ${shotPath}`);
+            throw e;
+        }
 
         // iframe으로 전환
         const frameHandle = await page.$('#mainFrame');
