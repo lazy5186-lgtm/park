@@ -166,8 +166,10 @@ async function createBottomOverlay(width) {
 const API_KEY = process.env.GEMINI_API_KEY || '';
 // 유저 데이터 경로 (업데이트해도 유지)
 const USER_DATA_DIR = process.env.USER_DATA_DIR || __dirname;
-// Prompt file path (앱 리소스 - 읽기 전용)
-const PROMPT_FILE_PATH = path.join(__dirname, 'prompt', 'prompt', 'info_Prompt.md');
+// 활성 프로필 디렉터리 (process-runner가 env로 전달, 없으면 구 경로 fallback)
+const ACTIVE_PROFILE_DIR = process.env.ACTIVE_PROFILE_DIR || path.join(__dirname, 'prompt', 'prompt');
+// Prompt file path
+const PROMPT_FILE_PATH = path.join(ACTIVE_PROFILE_DIR, 'info_Prompt.md');
 // 키워드별 이전 글 기록 경로 (유저 데이터)
 const KEYWORD_HISTORY_PATH = path.join(USER_DATA_DIR, 'keyword_history.json');
 // 이미지 프롬프트 히스토리 경로 (유저 데이터)
@@ -376,7 +378,7 @@ ${deduplicationPrompt}`;
 
         // 6. 이미지 프롬프트 생성
         console.log('이미지 생성을 위한 전용 프롬프트를 분석 중입니다...');
-        const IMG_PROMPT_FILE_PATH = path.join(__dirname, 'prompt', 'prompt', 'img_Prompt.md');
+        const IMG_PROMPT_FILE_PATH = path.join(ACTIVE_PROFILE_DIR, 'img_Prompt.md');
         let generatedImgPrompts = [];
 
         // 이전 이미지 프롬프트 히스토리 로드 (중복 방지)

@@ -8,7 +8,7 @@ function navigateTo(pageName) {
 
     // Load page-specific data
     if (pageName === 'dashboard') { loadDashboard(); loadSettings(); }
-    if (pageName === 'keywords') loadKeywords();
+    if (pageName === 'keywords') { loadProfiles(); loadKeywords(); }
     if (pageName === 'history') loadHistory();
     if (pageName === 'posting') { loadSettings(); loadDraftStatus(); loadResultPreview(); loadAccountCheckboxes(); }
 }
@@ -404,6 +404,94 @@ document.getElementById('btnAddCustomKeywords').addEventListener('click', async 
     showToast(`${keywords.length}개 키워드가 추가되었습니다.`, 'success');
 });
 
+// ===== Prompt Profiles =====
+let profileMax = 3;
+let currentProfileId = null;
+
+async function loadProfiles() {
+    const data = await window.api.profile.list();
+    profileMax = data.max;
+    currentProfileId = data.activeId;
+
+    const select = document.getElementById('profileSelect');
+    select.innerHTML = data.profiles.map(p =>
+        `<option value="${escapeHtml(p.id)}" ${p.id === data.activeId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+    ).join('');
+
+    document.getElementById('profileCount').textContent = `(${data.profiles.length}/${data.max})`;
+    document.getElementById('btnAddProfile').disabled = data.profiles.length >= data.max;
+    document.getElementById('btnDeleteProfile').disabled = data.profiles.length <= 1;
+
+    if (currentProfileId) await loadProfilePromptsToUI(currentProfileId);
+}
+
+async function loadProfilePromptsToUI(id) {
+    const res = await window.api.profile.loadPrompts(id);
+    if (!res.success) return showToast(`프롬프트 로드 실패: ${res.error}`, 'error');
+    document.getElementById('profileInfoPrompt').value = res.prompts.info || '';
+    document.getElementById('profileImgPrompt').value = res.prompts.img || '';
+}
+
+document.getElementById('profileSelect').addEventListener('change', async (e) => {
+    const id = e.target.value;
+    const res = await window.api.profile.setActive(id);
+    if (!res.success) return showToast(`프로필 전환 실패: ${res.error}`, 'error');
+    currentProfileId = id;
+    await loadProfilePromptsToUI(id);
+    await loadKeywords();
+    showToast('프로필이 전환되었습니다.', 'success');
+});
+
+document.getElementById('btnAddProfile').addEventListener('click', async () => {
+    const name = prompt('새 프로필 이름을 입력하세요. (예: "2. 음식")');
+    if (!name || !name.trim()) return;
+    const res = await window.api.profile.create(name.trim());
+    if (!res.success) return showToast(res.error, 'error');
+    showToast(`"${res.profile.name}" 프로필이 생성되었습니다.`, 'success');
+    await loadProfiles();
+});
+
+document.getElementById('btnRenameProfile').addEventListener('click', async () => {
+    if (!currentProfileId) return;
+    const select = document.getElementById('profileSelect');
+    const currentName = select.options[select.selectedIndex]?.text || '';
+    const name = prompt('새 이름을 입력하세요.', currentName);
+    if (!name || !name.trim() || name.trim() === currentName) return;
+    const res = await window.api.profile.rename(currentProfileId, name.trim());
+    if (!res.success) return showToast(res.error, 'error');
+    showToast('이름이 변경되었습니다.', 'success');
+    await loadProfiles();
+});
+
+document.getElementById('btnDeleteProfile').addEventListener('click', async () => {
+    if (!currentProfileId) return;
+    const select = document.getElementById('profileSelect');
+    const currentName = select.options[select.selectedIndex]?.text || '';
+    if (!confirm(`"${currentName}" 프로필을 삭제하시겠습니까?\n프롬프트 두 개와 메타데이터가 모두 삭제됩니다.`)) return;
+    const res = await window.api.profile.delete(currentProfileId);
+    if (!res.success) return showToast(res.error, 'error');
+    showToast('프로필이 삭제되었습니다.', 'success');
+    await loadProfiles();
+    await loadKeywords();
+});
+
+document.getElementById('btnSaveInfoPrompt').addEventListener('click', async () => {
+    if (!currentProfileId) return;
+    const content = document.getElementById('profileInfoPrompt').value;
+    const res = await window.api.profile.savePrompt(currentProfileId, 'info', content);
+    if (!res.success) return showToast(res.error, 'error');
+    showToast('글 프롬프트가 저장되었습니다.', 'success');
+    await loadKeywords();
+});
+
+document.getElementById('btnSaveImgPrompt').addEventListener('click', async () => {
+    if (!currentProfileId) return;
+    const content = document.getElementById('profileImgPrompt').value;
+    const res = await window.api.profile.savePrompt(currentProfileId, 'img', content);
+    if (!res.success) return showToast(res.error, 'error');
+    showToast('이미지 프롬프트가 저장되었습니다.', 'success');
+});
+
 // ===== History Page =====
 async function loadHistory() {
     const records = await window.api.history.load();
@@ -622,9 +710,33 @@ function renderNaverAccounts(data) {
 
     list.innerHTML = data.accounts.map(a => {
         const isSelected = a.id === data.selectedId;
-        const cookieLabel = a.cookieStatus?.hasCookie
-            ? `<span class="cookie-status valid">쿠키 저장됨</span>`
-            : `<span class="cookie-status">쿠키 없음</span>`;
+        const cs = a.cookieStatus;
+        let cookieLabel;
+        if (!cs?.hasCookie) {
+            cookieLabel = `<span class="cookie-status">쿠키 없음</span>`;
+        } else {
+            const fmt = (ms) => ms ? new Date(ms).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+            const sesLine = cs.sesDaysLeft == null ? '세션: 정보 없음'
+                : cs.sesDaysLeft <= 0 ? `세션: 만료 (${fmt(cs.sesExpiresAt)})`
+                : `세션: D-${cs.sesDaysLeft} (${fmt(cs.sesExpiresAt)})`;
+            const autLine = cs.autDaysLeft == null ? '자동로그인: 정보 없음'
+                : cs.autDaysLeft <= 0 ? `자동로그인: 만료 (${fmt(cs.autExpiresAt)})`
+                : `자동로그인: D-${cs.autDaysLeft} (${fmt(cs.autExpiresAt)})`;
+            const tip = `${sesLine}\n${autLine}`;
+
+            // 메인 표시는 세션(NID_SES) 기준 — 글쓰기 가능 여부와 일치
+            if (cs.sesDaysLeft == null && cs.autDaysLeft == null) {
+                cookieLabel = `<span class="cookie-status valid" title="${tip}">쿠키 저장됨</span>`;
+            } else if (cs.sesDaysLeft == null || cs.sesDaysLeft <= 0) {
+                // 세션 죽었지만 자동로그인 살아있으면 "재로그인 필요" — 회복 가능
+                const recoverable = cs.autDaysLeft != null && cs.autDaysLeft > 0;
+                const text = recoverable ? '재로그인 필요' : '만료됨';
+                cookieLabel = `<span class="cookie-status expired" title="${tip}">${text}</span>`;
+            } else {
+                const cls = cs.sesDaysLeft <= 1 ? 'warn' : 'valid';
+                cookieLabel = `<span class="cookie-status ${cls}" title="${tip}">세션 D-${cs.sesDaysLeft}</span>`;
+            }
+        }
 
         return `<div class="naver-account-item ${isSelected ? 'selected' : ''}">
             <div class="account-info">

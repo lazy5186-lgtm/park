@@ -31,8 +31,156 @@ const DEFAULT_CONFIG = {
     scheduleMode: 'instant',
     scheduleDate: '',
     scheduleHour: '',
-    scheduleMinute: ''
+    scheduleMinute: '',
+    activeProfileId: '1_loan'
 };
+
+// ===== Prompt Profiles =====
+const MAX_PROFILES = 3;
+const TEMPLATE_PROFILE_ID = '_template';
+const SEED_PROFILES_DIR = path.join(APP_DIR, 'prompt', 'profiles');
+const USER_PROFILES_DIR = path.join(USER_DATA_DIR, 'profiles');
+
+function copyDirSync(src, dest) {
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+        const s = path.join(src, entry.name);
+        const d = path.join(dest, entry.name);
+        if (entry.isDirectory()) copyDirSync(s, d);
+        else fs.copyFileSync(s, d);
+    }
+}
+
+function seedProfilesIfNeeded() {
+    if (!fs.existsSync(SEED_PROFILES_DIR)) return;
+    if (!fs.existsSync(USER_PROFILES_DIR)) fs.mkdirSync(USER_PROFILES_DIR, { recursive: true });
+    for (const entry of fs.readdirSync(SEED_PROFILES_DIR, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const dest = path.join(USER_PROFILES_DIR, entry.name);
+        if (!fs.existsSync(dest)) {
+            copyDirSync(path.join(SEED_PROFILES_DIR, entry.name), dest);
+        }
+    }
+}
+
+function listProfiles() {
+    seedProfilesIfNeeded();
+    if (!fs.existsSync(USER_PROFILES_DIR)) return [];
+    return fs.readdirSync(USER_PROFILES_DIR, { withFileTypes: true })
+        .filter(e => e.isDirectory() && e.name !== TEMPLATE_PROFILE_ID)
+        .map(e => {
+            const metaPath = path.join(USER_PROFILES_DIR, e.name, 'profile.json');
+            let name = e.name;
+            try {
+                if (fs.existsSync(metaPath)) {
+                    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                    if (meta && typeof meta.name === 'string' && meta.name.trim()) name = meta.name;
+                }
+            } catch (e) { /* ignore */ }
+            return { id: e.name, name };
+        })
+        .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function getActiveProfileId() {
+    const cfg = loadConfig();
+    const profiles = listProfiles();
+    if (profiles.length === 0) return null;
+    if (cfg.activeProfileId && profiles.some(p => p.id === cfg.activeProfileId)) {
+        return cfg.activeProfileId;
+    }
+    return profiles[0].id;
+}
+
+function setActiveProfileId(id) {
+    const profiles = listProfiles();
+    if (!profiles.some(p => p.id === id)) throw new Error(`프로필 "${id}"가 존재하지 않습니다.`);
+    const cfg = loadConfig();
+    cfg.activeProfileId = id;
+    saveConfig(cfg);
+    return id;
+}
+
+function getProfileDir(id) {
+    return path.join(USER_PROFILES_DIR, id);
+}
+
+function getActiveProfileDir() {
+    const id = getActiveProfileId();
+    return id ? getProfileDir(id) : null;
+}
+
+function loadProfilePrompts(id) {
+    const dir = getProfileDir(id);
+    const infoPath = path.join(dir, 'info_Prompt.md');
+    const imgPath = path.join(dir, 'img_Prompt.md');
+    return {
+        info: fs.existsSync(infoPath) ? fs.readFileSync(infoPath, 'utf-8') : '',
+        img: fs.existsSync(imgPath) ? fs.readFileSync(imgPath, 'utf-8') : ''
+    };
+}
+
+function saveProfilePrompt(id, type, content) {
+    if (type !== 'info' && type !== 'img') throw new Error(`알 수 없는 프롬프트 유형: ${type}`);
+    const dir = getProfileDir(id);
+    if (!fs.existsSync(dir)) throw new Error(`프로필 "${id}"가 존재하지 않습니다.`);
+    const filename = type === 'info' ? 'info_Prompt.md' : 'img_Prompt.md';
+    fs.writeFileSync(path.join(dir, filename), content, 'utf-8');
+}
+
+function createProfile(name) {
+    seedProfilesIfNeeded();
+    const profiles = listProfiles();
+    if (profiles.length >= MAX_PROFILES) {
+        throw new Error(`프로필은 최대 ${MAX_PROFILES}개까지만 만들 수 있습니다.`);
+    }
+    const cleanName = (name || '').trim() || '새 프로필';
+    // 다음 슬롯 번호 결정 (기존 1_, 2_, 3_ 중 비어있는 번호)
+    const used = new Set(profiles.map(p => {
+        const m = p.id.match(/^(\d+)_/);
+        return m ? parseInt(m[1], 10) : null;
+    }).filter(Boolean));
+    let slot = 1;
+    while (used.has(slot)) slot++;
+    const id = `${slot}_custom`;
+    const dest = path.join(USER_PROFILES_DIR, id);
+    const templateDir = path.join(USER_PROFILES_DIR, TEMPLATE_PROFILE_ID);
+    if (fs.existsSync(templateDir)) {
+        copyDirSync(templateDir, dest);
+    } else {
+        fs.mkdirSync(dest, { recursive: true });
+        fs.writeFileSync(path.join(dest, 'info_Prompt.md'), '', 'utf-8');
+        fs.writeFileSync(path.join(dest, 'img_Prompt.md'), '', 'utf-8');
+    }
+    fs.writeFileSync(path.join(dest, 'profile.json'), JSON.stringify({ name: cleanName }, null, 2), 'utf-8');
+    return { id, name: cleanName };
+}
+
+function renameProfile(id, name) {
+    const dir = getProfileDir(id);
+    if (!fs.existsSync(dir)) throw new Error(`프로필 "${id}"가 존재하지 않습니다.`);
+    const cleanName = (name || '').trim();
+    if (!cleanName) throw new Error('프로필 이름은 비워둘 수 없습니다.');
+    fs.writeFileSync(path.join(dir, 'profile.json'), JSON.stringify({ name: cleanName }, null, 2), 'utf-8');
+    return { id, name: cleanName };
+}
+
+function deleteProfile(id) {
+    const profiles = listProfiles();
+    if (profiles.length <= 1) throw new Error('마지막 프로필은 삭제할 수 없습니다.');
+    const dir = getProfileDir(id);
+    if (!fs.existsSync(dir)) throw new Error(`프로필 "${id}"가 존재하지 않습니다.`);
+    fs.rmSync(dir, { recursive: true, force: true });
+    // 활성 프로필이 삭제되면 첫 번째로 전환
+    const cfg = loadConfig();
+    if (cfg.activeProfileId === id) {
+        const remaining = listProfiles();
+        if (remaining.length > 0) {
+            cfg.activeProfileId = remaining[0].id;
+            saveConfig(cfg);
+        }
+    }
+}
 
 function loadConfig() {
     try {
@@ -52,7 +200,10 @@ function saveConfig(config) {
 }
 
 function loadKeywords() {
-    const promptPath = path.join(APP_DIR, 'prompt', 'prompt', 'info_Prompt.md');
+    const activeId = getActiveProfileId();
+    const promptPath = activeId
+        ? path.join(getProfileDir(activeId), 'info_Prompt.md')
+        : path.join(APP_DIR, 'prompt', 'prompt', 'info_Prompt.md');
     const usedPath = path.join(USER_DATA_DIR, 'used_keywords.json');
 
     let allKeywords = [];
@@ -260,7 +411,30 @@ function getNaverAccountCookieStatus(id) {
     if (!fs.existsSync(cookiePath)) return { hasCookie: false };
     try {
         const stat = fs.statSync(cookiePath);
-        return { hasCookie: true, lastSaved: stat.mtime.toISOString() };
+        const raw = JSON.parse(fs.readFileSync(cookiePath, 'utf-8'));
+        const cookies = Array.isArray(raw) ? raw : (raw.cookies || []);
+        const findCookie = (name) => cookies.find(c =>
+            c.name === name && typeof c.domain === 'string' && c.domain.includes('naver.com')
+        );
+        const toExpiry = (cookie) => {
+            if (!cookie || typeof cookie.expires !== 'number' || cookie.expires <= 0) return { at: null, days: null };
+            const at = Math.floor(cookie.expires * 1000);
+            return { at, days: Math.ceil((at - Date.now()) / 86400000) };
+        };
+        // 글쓰기 가능 여부의 기준은 NID_SES(세션). NID_AUT(자동 로그인)는 보조 정보.
+        const ses = toExpiry(findCookie('NID_SES'));
+        const aut = toExpiry(findCookie('NID_AUT'));
+        const primary = ses.at !== null ? ses : aut;
+        return {
+            hasCookie: true,
+            lastSaved: stat.mtime.toISOString(),
+            expiresAt: primary.at,
+            daysLeft: primary.days,
+            sesExpiresAt: ses.at,
+            sesDaysLeft: ses.days,
+            autExpiresAt: aut.at,
+            autDaysLeft: aut.days
+        };
     } catch (e) {
         return { hasCookie: false };
     }
@@ -288,5 +462,9 @@ function getUserDataDir() {
 module.exports = {
     loadConfig, saveConfig, loadKeywords, resetKeywords, removeKeyword, saveCustomKeywords, loadHistory,
     loadNaverAccounts, saveNaverAccounts, addNaverAccount, removeNaverAccount, selectNaverAccount,
-    getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies, getCookiesDir, getUserDataDir
+    getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies, getCookiesDir, getUserDataDir,
+    // Profiles
+    listProfiles, getActiveProfileId, setActiveProfileId, getActiveProfileDir, getProfileDir,
+    loadProfilePrompts, saveProfilePrompt, createProfile, renameProfile, deleteProfile,
+    seedProfilesIfNeeded, MAX_PROFILES
 };

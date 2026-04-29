@@ -28,6 +28,15 @@ contextBridge.exposeInMainWorld('api', {
         addCustom: (keywords) => ipcRenderer.invoke('keywords:addCustom', keywords),
         remove: (keyword) => ipcRenderer.invoke('keywords:remove', keyword)
     },
+    profile: {
+        list: () => ipcRenderer.invoke('profile:list'),
+        setActive: (id) => ipcRenderer.invoke('profile:setActive', id),
+        loadPrompts: (id) => ipcRenderer.invoke('profile:loadPrompts', id),
+        savePrompt: (id, type, content) => ipcRenderer.invoke('profile:savePrompt', { id, type, content }),
+        create: (name) => ipcRenderer.invoke('profile:create', name),
+        rename: (id, name) => ipcRenderer.invoke('profile:rename', { id, name }),
+        delete: (id) => ipcRenderer.invoke('profile:delete', id)
+    },
     history: {
         load: () => ipcRenderer.invoke('history:load')
     },

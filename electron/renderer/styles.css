@@ -781,6 +781,105 @@ h1 {
 
 .kw-header h3 { margin: 0; }
 
+/* ===== Prompt Profile Card ===== */
+.profile-card { margin-bottom: 16px; }
+
+.profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.profile-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.profile-selector label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary, #2d3748);
+}
+
+.profile-selector select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color, #cbd5e0);
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+    min-width: 180px;
+    cursor: pointer;
+}
+
+.profile-count {
+    font-size: 12px;
+    color: var(--text-muted, #718096);
+}
+
+.profile-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.prompt-edit-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+@media (max-width: 980px) {
+    .prompt-edit-row { grid-template-columns: 1fr; }
+}
+
+.prompt-edit-block { display: flex; flex-direction: column; }
+
+.prompt-edit-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.prompt-edit-head h3 {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary, #4a5568);
+}
+
+.prompt-edit-block textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    border: 1px solid var(--border-color, #cbd5e0);
+    border-radius: 6px;
+    font-family: 'Consolas', 'Menlo', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+    background: #fafafa;
+}
+
+.profile-hint {
+    margin: 12px 0 0;
+    font-size: 11px;
+    color: var(--text-muted, #718096);
+    line-height: 1.6;
+}
+
+.profile-hint code {
+    background: #edf2f7;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
 .keyword-list {
     display: flex;
     flex-wrap: wrap;
@@ -912,6 +1011,16 @@ h1 {
 .naver-account-item .cookie-status.valid {
     background: #c6f6d5;
     color: #276749;
+}
+
+.naver-account-item .cookie-status.warn {
+    background: #feebc8;
+    color: #9c4221;
+}
+
+.naver-account-item .cookie-status.expired {
+    background: #fed7d7;
+    color: #9b2c2c;
 }
 
 .naver-account-item .account-actions {

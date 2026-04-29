@@ -328,6 +328,51 @@
         <!-- Keywords Page -->
         <section id="page-keywords" class="page">
             <h1>키워드 관리</h1>
+
+            <!-- 프로필 셀렉터 -->
+            <div class="card profile-card">
+                <div class="profile-header">
+                    <div class="profile-selector">
+                        <label for="profileSelect">활성 프롬프트 프로필</label>
+                        <select id="profileSelect"></select>
+                        <span class="profile-count" id="profileCount"></span>
+                    </div>
+                    <div class="profile-actions">
+                        <button class="btn btn-sm" id="btnAddProfile" title="프로필 추가">
+                            <span class="material-symbols-outlined">add</span> 추가
+                        </button>
+                        <button class="btn btn-sm" id="btnRenameProfile" title="이름 변경">
+                            <span class="material-symbols-outlined">edit</span> 이름변경
+                        </button>
+                        <button class="btn btn-sm btn-danger" id="btnDeleteProfile" title="삭제">
+                            <span class="material-symbols-outlined">delete</span> 삭제
+                        </button>
+                    </div>
+                </div>
+
+                <div class="prompt-edit-row">
+                    <div class="prompt-edit-block">
+                        <div class="prompt-edit-head">
+                            <h3>글 프롬프트 (info_Prompt.md)</h3>
+                            <button class="btn btn-sm btn-primary" id="btnSaveInfoPrompt">
+                                <span class="material-symbols-outlined">save</span> 저장
+                            </button>
+                        </div>
+                        <textarea id="profileInfoPrompt" rows="14" spellcheck="false"></textarea>
+                    </div>
+                    <div class="prompt-edit-block">
+                        <div class="prompt-edit-head">
+                            <h3>이미지 프롬프트 (img_Prompt.md)</h3>
+                            <button class="btn btn-sm btn-primary" id="btnSaveImgPrompt">
+                                <span class="material-symbols-outlined">save</span> 저장
+                            </button>
+                        </div>
+                        <textarea id="profileImgPrompt" rows="14" spellcheck="false"></textarea>
+                    </div>
+                </div>
+                <p class="profile-hint">💡 글 프롬프트의 <code>[Keyword Pool]</code> 섹션에 쉼표로 키워드를 나열하면 자동으로 풀에 등록됩니다. 저장 후 키워드가 새로고침됩니다.</p>
+            </div>
+
             <div class="card keyword-input-area">
                 <h3><span class="material-symbols-outlined">add_circle</span> 키워드 직접 추가</h3>
                 <textarea id="kwCustomInput" rows="3" placeholder="키워드를 쉼표(,)로 구분하여 입력하세요. 예: 대출상담, 신용대출, 주택담보대출"></textarea>

@@ -10,7 +10,10 @@ if (process.platform === 'win32') {
 }
 const { loadConfig, saveConfig, loadKeywords, resetKeywords, removeKeyword, saveCustomKeywords, loadHistory,
     loadNaverAccounts, addNaverAccount, removeNaverAccount, selectNaverAccount,
-    getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies } = require('./config-manager');
+    getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies,
+    listProfiles, getActiveProfileId, setActiveProfileId,
+    loadProfilePrompts, saveProfilePrompt, createProfile, renameProfile, deleteProfile,
+    seedProfilesIfNeeded, MAX_PROFILES } = require('./config-manager');
 const { runScript, stopProcess, isRunning } = require('./process-runner');
 const { getPublicIP } = require('./ip-checker');
 const ipChanger = require('./ip-changer');
@@ -66,6 +69,9 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+    // 첫 실행 시 번들된 프롬프트 프로필을 사용자 데이터로 시드
+    try { seedProfilesIfNeeded(); } catch (e) { console.error('프로필 시드 실패:', e.message); }
+
     createWindow();
 
     // ADB 자동 설치 (없으면 다운로드)
@@ -352,6 +358,68 @@ ipcMain.handle('keywords:reset', () => {
 ipcMain.handle('keywords:addCustom', (_event, keywords) => {
     const merged = saveCustomKeywords(keywords);
     return { success: true, count: merged.length };
+});
+
+// ===== Prompt Profiles =====
+ipcMain.handle('profile:list', () => {
+    return {
+        profiles: listProfiles(),
+        activeId: getActiveProfileId(),
+        max: MAX_PROFILES
+    };
+});
+
+ipcMain.handle('profile:setActive', (_event, id) => {
+    try {
+        setActiveProfileId(id);
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('profile:loadPrompts', (_event, id) => {
+    try {
+        return { success: true, prompts: loadProfilePrompts(id) };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('profile:savePrompt', (_event, { id, type, content }) => {
+    try {
+        saveProfilePrompt(id, type, content);
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('profile:create', (_event, name) => {
+    try {
+        const profile = createProfile(name);
+        return { success: true, profile };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('profile:rename', (_event, { id, name }) => {
+    try {
+        const profile = renameProfile(id, name);
+        return { success: true, profile };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('profile:delete', (_event, id) => {
+    try {
+        deleteProfile(id);
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
 });
 
 ipcMain.handle('keywords:remove', (_event, keyword) => {

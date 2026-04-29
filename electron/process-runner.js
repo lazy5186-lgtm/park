@@ -1,7 +1,7 @@
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const { getUserDataDir } = require('./config-manager');
+const { getUserDataDir, getActiveProfileDir } = require('./config-manager');
 
 let currentProcess = null;
 
@@ -52,6 +52,7 @@ function buildEnv(config, accountOverride) {
         OVERLAY_PHONE: config.overlay?.phone || '010-8442-4224',
         IMAGE_COUNT: String(config.imageCount || 0),
         USER_DATA_DIR: getUserDataDir(),
+        ACTIVE_PROFILE_DIR: getActiveProfileDir() || '',
         OVERRIDE_KEYWORD: config.overrideKeyword || ''
     };
 }
