@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
     keywords: {
         load: () => ipcRenderer.invoke('keywords:load'),
         reset: () => ipcRenderer.invoke('keywords:reset'),
+        resetPool: () => ipcRenderer.invoke('keywords:resetPool'),
         addCustom: (keywords) => ipcRenderer.invoke('keywords:addCustom', keywords),
         remove: (keyword) => ipcRenderer.invoke('keywords:remove', keyword)
     },
@@ -48,6 +49,8 @@ contextBridge.exposeInMainWorld('api', {
         check: () => ipcRenderer.invoke('ip:check'),
         interfaces: () => ipcRenderer.invoke('ip:interfaces'),
         change: (interfaceName) => ipcRenderer.invoke('ip:change', interfaceName),
+        tetherStatus: () => ipcRenderer.invoke('ip:tetherStatus'),
+        tether: (enable) => ipcRenderer.invoke('ip:tether', enable),
         onLog: (callback) => {
             const handler = (_event, data) => callback(data);
             ipcRenderer.on('ip:log', handler);
@@ -91,16 +94,8 @@ contextBridge.exposeInMainWorld('api', {
     },
     update: {
         check: () => ipcRenderer.invoke('update:check'),
-        onNotAvailable: (callback) => {
-            const handler = (_event) => callback();
-            ipcRenderer.on('update:notAvailable', handler);
-            return () => ipcRenderer.removeListener('update:notAvailable', handler);
-        },
-        onError: (callback) => {
-            const handler = (_event, data) => callback(data);
-            ipcRenderer.on('update:error', handler);
-            return () => ipcRenderer.removeListener('update:error', handler);
-        },
+        download: () => ipcRenderer.invoke('update:download'),
+        restart: () => ipcRenderer.invoke('update:restart'),
         onAvailable: (callback) => {
             const handler = (_event, data) => callback(data);
             ipcRenderer.on('update:available', handler);
@@ -111,11 +106,10 @@ contextBridge.exposeInMainWorld('api', {
             ipcRenderer.on('update:progress', handler);
             return () => ipcRenderer.removeListener('update:progress', handler);
         },
-        onDownloaded: (callback) => {
+        onError: (callback) => {
             const handler = (_event, data) => callback(data);
-            ipcRenderer.on('update:downloaded', handler);
-            return () => ipcRenderer.removeListener('update:downloaded', handler);
-        },
-        install: () => ipcRenderer.invoke('update:install')
+            ipcRenderer.on('update:error', handler);
+            return () => ipcRenderer.removeListener('update:error', handler);
+        }
     }
 });

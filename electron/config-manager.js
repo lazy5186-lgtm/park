@@ -110,6 +110,33 @@ function getActiveProfileDir() {
     return id ? getProfileDir(id) : null;
 }
 
+// 키워드(custom/removed/used/history)를 저장하는 디렉터리 — 활성 프로필별로 분리
+// 프로필이 없으면 구 전역 경로(USER_DATA_DIR)로 폴백
+function getKeywordDir() {
+    const id = getActiveProfileId();
+    return id ? getProfileDir(id) : USER_DATA_DIR;
+}
+
+// 기존 전역 키워드 파일을 첫 프로필(보통 1_loan)로 1회 이전.
+// 전역 파일은 .migrated 로 백업해 재이전을 막는다.
+function migrateGlobalKeywordsIfNeeded() {
+    // 기존 전역 키워드는 "현재 활성 프로필"로 모은다 (사용자가 마지막에 쓰던 도메인일 가능성이 높음)
+    const targetId = getActiveProfileId();
+    if (!targetId) return;
+    const targetDir = getProfileDir(targetId);
+    if (!fs.existsSync(targetDir)) return;
+    for (const f of ['custom_keywords.json', 'removed_keywords.json', 'used_keywords.json', 'keyword_history.json']) {
+        const oldPath = path.join(USER_DATA_DIR, f);
+        const newPath = path.join(targetDir, f);
+        if (fs.existsSync(oldPath) && !fs.existsSync(newPath)) {
+            try {
+                fs.copyFileSync(oldPath, newPath);
+                fs.renameSync(oldPath, oldPath + '.migrated');
+            } catch (e) { /* ignore */ }
+        }
+    }
+}
+
 function loadProfilePrompts(id) {
     const dir = getProfileDir(id);
     const infoPath = path.join(dir, 'info_Prompt.md');
@@ -201,22 +228,23 @@ function saveConfig(config) {
 
 function loadKeywords() {
     const activeId = getActiveProfileId();
+    const kwDir = activeId ? getProfileDir(activeId) : USER_DATA_DIR;
     const promptPath = activeId
         ? path.join(getProfileDir(activeId), 'info_Prompt.md')
         : path.join(APP_DIR, 'prompt', 'prompt', 'info_Prompt.md');
-    const usedPath = path.join(USER_DATA_DIR, 'used_keywords.json');
+    const usedPath = path.join(kwDir, 'used_keywords.json');
 
     let allKeywords = [];
     let usedKeywords = [];
 
     try {
         const promptContent = fs.readFileSync(promptPath, 'utf-8');
-        const match = promptContent.match(/\[키워드\s*풀\]([\s\S]*?)(?=\n#|\n\[|$)/i)
-            || promptContent.match(/키워드\s*풀[^\n]*\n([\s\S]*?)(?=\n#|\n\[|$)/i);
-        if (match) {
-            allKeywords = match[1].split(',').map(k => k.trim()).filter(k => k.length > 0);
-        }
-        if (allKeywords.length === 0) {
+        // [키워드 풀] 또는 [Keyword Pool] 섹션을 우선 인식
+        const structuredMatch = promptContent.match(/\[(?:키워드\s*풀|keyword\s*pool)\]([\s\S]*?)(?=\n#|\n\[|$)/i);
+        if (structuredMatch) {
+            allKeywords = structuredMatch[1].split(/[,\n]/).map(k => k.trim()).filter(k => k.length > 0 && !k.startsWith('#'));
+        } else {
+            // 섹션이 없으면 쉼표 5개 이상 라인 느슨한 fallback
             const lines = promptContent.split('\n');
             for (const line of lines) {
                 if (line.includes(',') && !line.startsWith('#')) {
@@ -232,7 +260,7 @@ function loadKeywords() {
 
     // custom_keywords.json
     try {
-        const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
+        const customPath = path.join(kwDir, 'custom_keywords.json');
         if (fs.existsSync(customPath)) {
             const custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
             if (Array.isArray(custom)) {
@@ -244,7 +272,7 @@ function loadKeywords() {
     // removed_keywords.json
     let removedKeywords = [];
     try {
-        const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
+        const removedPath = path.join(kwDir, 'removed_keywords.json');
         if (fs.existsSync(removedPath)) {
             removedKeywords = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
         }
@@ -263,12 +291,36 @@ function loadKeywords() {
 }
 
 function resetKeywords() {
-    const usedPath = path.join(USER_DATA_DIR, 'used_keywords.json');
+    const usedPath = path.join(getKeywordDir(), 'used_keywords.json');
     fs.writeFileSync(usedPath, '[]', 'utf-8');
 }
 
+function resetKeywordPool() {
+    const kwDir = getKeywordDir();
+    const customPath = path.join(kwDir, 'custom_keywords.json');
+    const removedPath = path.join(kwDir, 'removed_keywords.json');
+    fs.writeFileSync(customPath, '[]', 'utf-8');
+    fs.writeFileSync(removedPath, '[]', 'utf-8');
+
+    // 활성 프로필 프롬프트의 [키워드 풀]/[Keyword Pool] 섹션 내용도 비움 (헤더는 유지)
+    const activeId = getActiveProfileId();
+    if (!activeId) return;
+    const promptPath = path.join(getProfileDir(activeId), 'info_Prompt.md');
+    try {
+        if (fs.existsSync(promptPath)) {
+            const content = fs.readFileSync(promptPath, 'utf-8');
+            const cleaned = content.replace(
+                /(\[(?:키워드\s*풀|keyword\s*pool)\][^\n]*\n)([\s\S]*?)(?=\n#|\n\[|$)/i,
+                '$1\n'
+            );
+            if (cleaned !== content) fs.writeFileSync(promptPath, cleaned, 'utf-8');
+        }
+    } catch (e) { /* ignore */ }
+}
+
 function removeKeyword(keyword) {
-    const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
+    const kwDir = getKeywordDir();
+    const customPath = path.join(kwDir, 'custom_keywords.json');
     try {
         if (fs.existsSync(customPath)) {
             let custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
@@ -277,7 +329,7 @@ function removeKeyword(keyword) {
         }
     } catch (e) { /* ignore */ }
 
-    const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
+    const removedPath = path.join(kwDir, 'removed_keywords.json');
     let removed = [];
     try {
         if (fs.existsSync(removedPath)) {
@@ -291,7 +343,8 @@ function removeKeyword(keyword) {
 }
 
 function saveCustomKeywords(keywords) {
-    const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
+    const kwDir = getKeywordDir();
+    const customPath = path.join(kwDir, 'custom_keywords.json');
     let existing = [];
     try {
         if (fs.existsSync(customPath)) {
@@ -301,7 +354,7 @@ function saveCustomKeywords(keywords) {
     const merged = [...existing, ...keywords.filter(k => k && !existing.includes(k))];
     fs.writeFileSync(customPath, JSON.stringify(merged, null, 2), 'utf-8');
 
-    const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
+    const removedPath = path.join(kwDir, 'removed_keywords.json');
     try {
         if (fs.existsSync(removedPath)) {
             let removed = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
@@ -460,11 +513,11 @@ function getUserDataDir() {
 }
 
 module.exports = {
-    loadConfig, saveConfig, loadKeywords, resetKeywords, removeKeyword, saveCustomKeywords, loadHistory,
+    loadConfig, saveConfig, loadKeywords, resetKeywords, resetKeywordPool, removeKeyword, saveCustomKeywords, loadHistory,
     loadNaverAccounts, saveNaverAccounts, addNaverAccount, removeNaverAccount, selectNaverAccount,
     getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies, getCookiesDir, getUserDataDir,
     // Profiles
     listProfiles, getActiveProfileId, setActiveProfileId, getActiveProfileDir, getProfileDir,
     loadProfilePrompts, saveProfilePrompt, createProfile, renameProfile, deleteProfile,
-    seedProfilesIfNeeded, MAX_PROFILES
+    seedProfilesIfNeeded, MAX_PROFILES, migrateGlobalKeywordsIfNeeded
 };

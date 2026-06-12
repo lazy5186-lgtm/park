@@ -171,7 +171,7 @@ const ACTIVE_PROFILE_DIR = process.env.ACTIVE_PROFILE_DIR || path.join(__dirname
 // Prompt file path
 const PROMPT_FILE_PATH = path.join(ACTIVE_PROFILE_DIR, 'info_Prompt.md');
 // 키워드별 이전 글 기록 경로 (유저 데이터)
-const KEYWORD_HISTORY_PATH = path.join(USER_DATA_DIR, 'keyword_history.json');
+const KEYWORD_HISTORY_PATH = path.join(ACTIVE_PROFILE_DIR, 'keyword_history.json');
 // 이미지 프롬프트 히스토리 경로 (유저 데이터)
 const IMAGE_HISTORY_PATH = path.join(USER_DATA_DIR, 'image_prompt_history.json');
 
@@ -217,7 +217,7 @@ async function generateArticle() {
         // 2. 키워드 결정: 단독 키워드가 있으면 그것만 사용
         let randomKeyword;
         const overrideKeyword = (process.env.OVERRIDE_KEYWORD || '').trim();
-        const usedKeywordsPath = path.join(USER_DATA_DIR, 'used_keywords.json');
+        const usedKeywordsPath = path.join(ACTIVE_PROFILE_DIR, 'used_keywords.json');
         let usedKeywords = [];
 
         if (overrideKeyword) {
@@ -235,7 +235,7 @@ async function generateArticle() {
 
             // 삭제된 키워드 필터링
             try {
-                const removedPath = path.join(USER_DATA_DIR, 'removed_keywords.json');
+                const removedPath = path.join(ACTIVE_PROFILE_DIR, 'removed_keywords.json');
                 if (fs.existsSync(removedPath)) {
                     const removed = JSON.parse(fs.readFileSync(removedPath, 'utf-8'));
                     keywordPool = keywordPool.filter(k => !removed.includes(k));
@@ -244,7 +244,7 @@ async function generateArticle() {
 
             // 커스텀 키워드 추가
             try {
-                const customPath = path.join(USER_DATA_DIR, 'custom_keywords.json');
+                const customPath = path.join(ACTIVE_PROFILE_DIR, 'custom_keywords.json');
                 if (fs.existsSync(customPath)) {
                     const custom = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
                     if (Array.isArray(custom)) {

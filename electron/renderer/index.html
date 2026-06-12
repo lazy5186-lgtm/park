@@ -48,8 +48,11 @@
                 <div class="update-progress-bar" id="updateProgressBar" style="display:none;">
                     <div class="update-progress-fill" id="updateProgressFill"></div>
                 </div>
-                <button class="btn btn-sm update-install-btn" id="btnUpdateInstall" style="display:none;">
-                    지금 재시작하여 업데이트
+                <button class="btn btn-sm update-install-btn" id="btnUpdateAction">
+                    업데이트 다운로드
+                </button>
+                <button class="btn btn-sm" id="btnUpdateDismiss" title="닫기">
+                    <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
         </div>
@@ -186,6 +189,15 @@
                                 <span class="material-symbols-outlined">refresh</span> IP 확인
                             </button>
                         </div>
+                        <div class="ip-status-row">
+                            <div class="ip-info">
+                                <span class="ip-label">USB 테더링:</span>
+                                <span id="tetherStatus" class="ip-value">-</span>
+                            </div>
+                            <button type="button" class="btn btn-sm" id="btnTether">
+                                <span class="material-symbols-outlined">wifi_tethering</span> 테더링 ON
+                            </button>
+                        </div>
                         <div class="form-group">
                             <label>네트워크 인터페이스</label>
                             <div class="interface-row">
@@ -219,6 +231,10 @@
         <section id="page-posting" class="page">
             <h1>블로그 포스팅</h1>
             <p class="page-desc">AI 블로그 글 생성 및 네이버 블로그 포스팅을 실행합니다.</p>
+            <div class="active-profile-badge" id="activeProfileBadge" title="키워드 관리 페이지에서 변경할 수 있습니다">
+                <span class="material-symbols-outlined">bookmark</span>
+                <span>현재 프로필: <strong id="activeProfileName">-</strong></span>
+            </div>
             <!-- 임시 저장 상태 -->
             <div class="draft-status card" id="draftStatus" style="display:none;">
                 <div class="draft-info">
@@ -382,7 +398,12 @@
             </div>
             <div class="card-grid keyword-grid">
                 <div class="card">
-                    <h3>전체 키워드 풀 (<span id="kwTotalCount">0</span>개)</h3>
+                    <div class="kw-header">
+                        <h3>전체 키워드 풀 (<span id="kwTotalCount">0</span>개)</h3>
+                        <button class="btn btn-sm btn-danger" id="btnResetPool" title="직접 추가/제외한 키워드를 비워 프롬프트 원본 상태로 되돌립니다">
+                            <span class="material-symbols-outlined">restart_alt</span> 초기화
+                        </button>
+                    </div>
                     <div class="keyword-list" id="kwAllList"></div>
                 </div>
                 <div class="card">
@@ -422,6 +443,19 @@
             </div>
         </section>
     </main>
+
+    <!-- Custom modal (prompt/confirm replacement, since Electron renderer disables window.prompt) -->
+    <div class="modal-overlay" id="appModal" hidden>
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="appModalTitle">
+            <h3 class="modal-title" id="appModalTitle"></h3>
+            <p class="modal-message" id="appModalMessage" hidden></p>
+            <input type="text" class="modal-input" id="appModalInput" hidden>
+            <div class="modal-actions">
+                <button class="btn btn-sm" id="appModalCancel">취소</button>
+                <button class="btn btn-sm btn-primary" id="appModalOk">확인</button>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

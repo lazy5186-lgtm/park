@@ -101,4 +101,30 @@ async function toggleMobileData(deviceId, logFn) {
     await execAdb(`${deviceArg} shell svc data enable`);
 }
 
-module.exports = { getAdbPath, isAdbAvailable, getConnectedDevices, checkDeviceStatus, toggleMobileData };
+// 현재 USB 테더링(rndis) 상태 확인
+async function getTetherStatus(deviceId) {
+    const deviceArg = deviceId ? `-s ${deviceId}` : '';
+    // sys.usb.config / sys.usb.state 에 rndis 가 포함되면 테더링 ON
+    let raw = '';
+    try { raw += await execAdb(`${deviceArg} shell getprop sys.usb.config`); } catch (e) { /* ignore */ }
+    try { raw += ' ' + await execAdb(`${deviceArg} shell getprop sys.usb.state`); } catch (e) { /* ignore */ }
+    return { on: /rndis/i.test(raw) };
+}
+
+// USB 테더링 ON/OFF
+// enable=true  → svc usb setFunctions rndis  (테더링 켜기)
+// enable=false → svc usb setFunctions        (기본 기능 복귀 = 테더링 끄기)
+async function setUsbTethering(deviceId, enable, logFn) {
+    const log = logFn || (() => {});
+    const deviceArg = deviceId ? `-s ${deviceId}` : '';
+
+    if (enable) {
+        log('USB 테더링 ON (svc usb setFunctions rndis)...');
+        await execAdb(`${deviceArg} shell svc usb setFunctions rndis`);
+    } else {
+        log('USB 테더링 OFF (기본 USB 기능 복귀)...');
+        await execAdb(`${deviceArg} shell svc usb setFunctions`);
+    }
+}
+
+module.exports = { getAdbPath, isAdbAvailable, getConnectedDevices, checkDeviceStatus, toggleMobileData, getTetherStatus, setUsbTethering };

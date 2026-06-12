@@ -12,6 +12,7 @@ setting.txt
 cookies/
 .env
 
+
 # Generated content (runtime artifacts)
 result.json
 result_*.txt

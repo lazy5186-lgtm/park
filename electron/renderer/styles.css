@@ -1214,3 +1214,79 @@ h1 {
     from { transform: translateY(20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
+
+/* ===== Custom modal (prompt/confirm replacement) ===== */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+}
+.modal-overlay[hidden] { display: none; }
+
+.modal-box {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    padding: 22px 24px 18px;
+    width: min(420px, 90vw);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.modal-title {
+    color: var(--oxford-navy);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.modal-message {
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.modal-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text);
+    background: #fff;
+    outline: none;
+}
+.modal-input:focus { border-color: var(--cerulean); box-shadow: 0 0 0 3px rgba(69,123,157,0.15); }
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+/* ===== Active profile badge (posting page) ===== */
+.active-profile-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    margin: 0 0 12px;
+    background: #e6f0fa;
+    color: var(--oxford-navy);
+    border-left: 3px solid var(--cerulean);
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+.active-profile-badge:hover { background: #d4e3f3; }
+.active-profile-badge .material-symbols-outlined { font-size: 18px; color: var(--cerulean); }
+.active-profile-badge strong { color: var(--oxford-navy); font-weight: 700; }
+

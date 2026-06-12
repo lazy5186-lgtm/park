@@ -10,8 +10,20 @@ function navigateTo(pageName) {
     if (pageName === 'dashboard') { loadDashboard(); loadSettings(); }
     if (pageName === 'keywords') { loadProfiles(); loadKeywords(); }
     if (pageName === 'history') loadHistory();
-    if (pageName === 'posting') { loadSettings(); loadDraftStatus(); loadResultPreview(); loadAccountCheckboxes(); }
+    if (pageName === 'posting') { loadSettings(); loadDraftStatus(); loadResultPreview(); loadAccountCheckboxes(); loadActiveProfileBadge(); }
 }
+
+async function loadActiveProfileBadge() {
+    try {
+        const data = await window.api.profile.list();
+        const active = data.profiles.find(p => p.id === data.activeId);
+        document.getElementById('activeProfileName').textContent = active?.name || '없음';
+    } catch (e) {
+        document.getElementById('activeProfileName').textContent = '로드 실패';
+    }
+}
+
+document.getElementById('activeProfileBadge').addEventListener('click', () => navigateTo('keywords'));
 
 navItems.forEach(item => {
     item.addEventListener('click', () => navigateTo(item.dataset.page));
@@ -27,6 +39,59 @@ function showToast(message, type = '') {
     toast.textContent = message;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
+}
+
+// ===== Custom modal (window.prompt/confirm don't work in Electron renderer) =====
+function showModal({ title, message = '', input = false, defaultValue = '', confirmText = '확인', cancelText = '취소' }) {
+    return new Promise(resolve => {
+        const overlay = document.getElementById('appModal');
+        const titleEl = document.getElementById('appModalTitle');
+        const msgEl = document.getElementById('appModalMessage');
+        const inputEl = document.getElementById('appModalInput');
+        const okBtn = document.getElementById('appModalOk');
+        const cancelBtn = document.getElementById('appModalCancel');
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        msgEl.hidden = !message;
+        inputEl.hidden = !input;
+        inputEl.value = input ? defaultValue : '';
+        okBtn.textContent = confirmText;
+        cancelBtn.textContent = cancelText;
+        overlay.hidden = false;
+
+        if (input) setTimeout(() => { inputEl.focus(); inputEl.select(); }, 0);
+        else setTimeout(() => okBtn.focus(), 0);
+
+        const cleanup = (result) => {
+            overlay.hidden = true;
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            overlay.removeEventListener('click', onBackdrop);
+            document.removeEventListener('keydown', onKey);
+            resolve(result);
+        };
+        const onOk = () => cleanup(input ? inputEl.value : true);
+        const onCancel = () => cleanup(input ? null : false);
+        const onBackdrop = (e) => { if (e.target === overlay) onCancel(); };
+        const onKey = (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+            else if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+        };
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        overlay.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKey);
+    });
+}
+
+function customPrompt(title, defaultValue = '') {
+    return showModal({ title, input: true, defaultValue });
+}
+
+function customConfirm(title, message = '') {
+    return showModal({ title, message });
 }
 
 // ===== Status indicator =====
@@ -131,7 +196,7 @@ document.getElementById('btnPostDraft').addEventListener('click', async () => {
 });
 
 document.getElementById('btnDeleteDraft').addEventListener('click', async () => {
-    if (!confirm('임시 저장된 글을 삭제하시겠습니까?')) return;
+    if (!await customConfirm('임시 저장된 글을 삭제하시겠습니까?')) return;
     await window.api.result.delete();
     loadDraftStatus();
     loadResultPreview();
@@ -252,7 +317,7 @@ document.getElementById('btnPost').addEventListener('click', async () => {
         return;
     }
     const kwMsg = overrideKw ? `\n키워드: "${overrideKw}"` : '\n키워드: 키워드 풀에서 자동 선택';
-    if (!confirm(`[${modeLabels[mode]}] 모드로 실행하시겠습니까?${kwMsg}`)) {
+    if (!await customConfirm(`[${modeLabels[mode]}] 모드로 실행하시겠습니까?`, kwMsg.trim())) {
         return;
     }
 
@@ -384,10 +449,18 @@ async function loadKeywords() {
 }
 
 document.getElementById('btnResetKeywords').addEventListener('click', async () => {
-    if (confirm('사용된 키워드를 초기화하시겠습니까?')) {
+    if (await customConfirm('사용된 키워드를 초기화하시겠습니까?')) {
         await window.api.keywords.reset();
         await loadKeywords();
         showToast('키워드가 초기화되었습니다.', 'success');
+    }
+});
+
+document.getElementById('btnResetPool').addEventListener('click', async () => {
+    if (await customConfirm('키워드 풀을 모두 비우시겠습니까?', '직접 추가한 키워드 + 제외한 키워드 + 프롬프트의 [Keyword Pool] 섹션 내용까지 모두 빈 상태가 됩니다. (프롬프트의 다른 섹션은 그대로 유지)')) {
+        await window.api.keywords.resetPool();
+        await loadKeywords();
+        showToast('키워드 풀이 모두 비워졌습니다.', 'success');
     }
 });
 
@@ -443,7 +516,7 @@ document.getElementById('profileSelect').addEventListener('change', async (e) =>
 });
 
 document.getElementById('btnAddProfile').addEventListener('click', async () => {
-    const name = prompt('새 프로필 이름을 입력하세요. (예: "2. 음식")');
+    const name = await customPrompt('새 프로필 이름을 입력하세요. (예: "2. 음식")');
     if (!name || !name.trim()) return;
     const res = await window.api.profile.create(name.trim());
     if (!res.success) return showToast(res.error, 'error');
@@ -455,7 +528,7 @@ document.getElementById('btnRenameProfile').addEventListener('click', async () =
     if (!currentProfileId) return;
     const select = document.getElementById('profileSelect');
     const currentName = select.options[select.selectedIndex]?.text || '';
-    const name = prompt('새 이름을 입력하세요.', currentName);
+    const name = await customPrompt('새 이름을 입력하세요.', currentName);
     if (!name || !name.trim() || name.trim() === currentName) return;
     const res = await window.api.profile.rename(currentProfileId, name.trim());
     if (!res.success) return showToast(res.error, 'error');
@@ -467,7 +540,7 @@ document.getElementById('btnDeleteProfile').addEventListener('click', async () =
     if (!currentProfileId) return;
     const select = document.getElementById('profileSelect');
     const currentName = select.options[select.selectedIndex]?.text || '';
-    if (!confirm(`"${currentName}" 프로필을 삭제하시겠습니까?\n프롬프트 두 개와 메타데이터가 모두 삭제됩니다.`)) return;
+    if (!await customConfirm(`"${currentName}" 프로필을 삭제하시겠습니까?`, '프롬프트 두 개와 메타데이터가 모두 삭제됩니다.')) return;
     const res = await window.api.profile.delete(currentProfileId);
     if (!res.success) return showToast(res.error, 'error');
     showToast('프로필이 삭제되었습니다.', 'success');
@@ -626,6 +699,65 @@ document.getElementById('btnChangeIp').addEventListener('click', async () => {
     btn.innerHTML = '<span class="material-symbols-outlined">swap_vert</span> IP 변경';
 });
 
+// ===== USB 테더링 ON/OFF =====
+function setTetherUI(on) {
+    const el = document.getElementById('tetherStatus');
+    const btn = document.getElementById('btnTether');
+    if (!el || !btn) return;
+    el.textContent = on ? 'ON' : 'OFF';
+    el.style.color = on ? '#2e7d32' : '';
+    btn.dataset.on = on ? '1' : '';
+    // OFF 상태일 때 강조(파랑)로 "켜기" 유도, ON 상태일 땐 기본 버튼
+    btn.classList.toggle('btn-primary', !on);
+    btn.innerHTML = on
+        ? '<span class="material-symbols-outlined">wifi_tethering_off</span> 테더링 OFF'
+        : '<span class="material-symbols-outlined">wifi_tethering</span> 테더링 ON';
+}
+
+async function refreshTetherStatus() {
+    const el = document.getElementById('tetherStatus');
+    const btn = document.getElementById('btnTether');
+    if (!el || !btn) return;
+    try {
+        const r = await window.api.ip.tetherStatus();
+        if (!r.available) {
+            el.textContent = '기기 없음';
+            el.style.color = '';
+            btn.dataset.on = '';
+            btn.classList.add('btn-primary');
+            btn.innerHTML = '<span class="material-symbols-outlined">wifi_tethering</span> 테더링 ON';
+            return;
+        }
+        setTetherUI(r.on);
+    } catch (e) {
+        el.textContent = '-';
+    }
+}
+
+document.getElementById('btnTether').addEventListener('click', async () => {
+    const btn = document.getElementById('btnTether');
+    const enable = btn.dataset.on !== '1';
+    btn.disabled = true;
+    btn.innerHTML = `<span class="material-symbols-outlined">hourglass_top</span> ${enable ? '켜는 중...' : '끄는 중...'}`;
+    try {
+        const r = await window.api.ip.tether(enable);
+        if (r.success) {
+            setTetherUI(r.on);
+            showToast(`USB 테더링 ${r.on ? 'ON' : 'OFF'}`, 'success');
+        } else {
+            showToast(`테더링 실패: ${r.error}`, 'error');
+            await refreshTetherStatus();
+        }
+    } catch (e) {
+        showToast(`테더링 오류: ${e.message}`, 'error');
+        await refreshTetherStatus();
+    }
+    btn.disabled = false;
+});
+
+// 시작 시 테더링 상태 1회 확인
+refreshTetherStatus();
+
 // ===== Version & Update =====
 async function loadVersion() {
     const version = await window.api.app.getVersion();
@@ -634,66 +766,93 @@ async function loadVersion() {
 
 document.getElementById('btnCheckUpdate').addEventListener('click', async () => {
     const statusEl = document.getElementById('versionStatus');
+    const btn = document.getElementById('btnCheckUpdate');
     statusEl.className = 'version-status updating';
     statusEl.textContent = '확인 중...';
-    document.getElementById('btnCheckUpdate').disabled = true;
-    await window.api.update.check();
+    btn.disabled = true;
+
+    const res = await window.api.update.check();
+    btn.disabled = false;
+    if (res.error) {
+        statusEl.className = 'version-status';
+        statusEl.textContent = `확인 실패: ${res.error}`;
+    } else if (res.hasUpdate) {
+        statusEl.className = 'version-status updating';
+        statusEl.textContent = `v${res.version} 사용 가능`;
+        showUpdateBanner(res.version, res.changelog);
+    } else {
+        statusEl.className = 'version-status latest';
+        statusEl.textContent = '최신 버전입니다';
+    }
 });
 
-window.api.update.onNotAvailable(() => {
-    const statusEl = document.getElementById('versionStatus');
-    statusEl.className = 'version-status latest';
-    statusEl.textContent = '최신 버전입니다.';
-    document.getElementById('btnCheckUpdate').disabled = false;
+window.api.update.onAvailable((data) => {
+    showUpdateBanner(data.version, data.changelog);
 });
 
 window.api.update.onError((data) => {
-    const statusEl = document.getElementById('versionStatus');
-    statusEl.className = 'version-status';
-    statusEl.textContent = '업데이트 확인 실패';
-    document.getElementById('btnCheckUpdate').disabled = false;
-});
-
-// ===== Auto Update =====
-window.api.update.onAvailable((data) => {
-    const banner = document.getElementById('updateBanner');
-    const message = document.getElementById('updateMessage');
-    const progressBar = document.getElementById('updateProgressBar');
-
-    banner.style.display = 'block';
-    message.textContent = `새 버전 v${data.version} 다운로드 중...`;
-    progressBar.style.display = 'block';
-
-    const statusEl = document.getElementById('versionStatus');
-    statusEl.className = 'version-status updating';
-    statusEl.textContent = `v${data.version} 다운로드 중...`;
-    document.getElementById('btnCheckUpdate').disabled = true;
+    showToast(`업데이트 오류: ${data.message}`, 'error');
 });
 
 window.api.update.onProgress((data) => {
+    const percent = Math.round((data.current / data.total) * 100);
     const fill = document.getElementById('updateProgressFill');
-    fill.style.width = `${data.percent}%`;
-    const message = document.getElementById('updateMessage');
-    message.textContent = `새 버전 다운로드 중... ${data.percent}%`;
+    fill.style.width = `${percent}%`;
+    document.getElementById('updateMessage').textContent =
+        `다운로드 중 ${data.current}/${data.total} (${percent}%)`;
 });
 
-window.api.update.onDownloaded((data) => {
-    const message = document.getElementById('updateMessage');
+function showUpdateBanner(version, changelog) {
+    pendingUpdate = { version, changelog };
+    const banner = document.getElementById('updateBanner');
+    const msg = document.getElementById('updateMessage');
+    const action = document.getElementById('btnUpdateAction');
     const progressBar = document.getElementById('updateProgressBar');
-    const installBtn = document.getElementById('btnUpdateInstall');
 
-    message.textContent = `v${data.version} 다운로드 완료!`;
+    msg.textContent = `새 버전 v${version} 사용 가능${changelog ? ` — ${changelog}` : ''}`;
     progressBar.style.display = 'none';
-    installBtn.style.display = 'inline-flex';
+    document.getElementById('updateProgressFill').style.width = '0%';
+    action.textContent = '업데이트 다운로드';
+    action.disabled = false;
+    action.dataset.state = 'download';
+    banner.style.display = 'block';
+}
 
-    const statusEl = document.getElementById('versionStatus');
-    statusEl.className = 'version-status latest';
-    statusEl.textContent = `v${data.version} 업데이트 준비 완료`;
+document.getElementById('btnUpdateAction').addEventListener('click', async () => {
+    const action = document.getElementById('btnUpdateAction');
+    if (action.dataset.state === 'restart') {
+        await window.api.update.restart();
+        return;
+    }
+
+    action.disabled = true;
+    action.textContent = '다운로드 중...';
+    document.getElementById('updateProgressBar').style.display = 'block';
+
+    const res = await window.api.update.download();
+    if (res.success) {
+        document.getElementById('updateMessage').textContent =
+            `v${res.version} 다운로드 완료 — 재시작하면 적용됩니다`;
+        document.getElementById('updateProgressBar').style.display = 'none';
+        action.textContent = '지금 재시작';
+        action.disabled = false;
+        action.dataset.state = 'restart';
+    } else {
+        document.getElementById('updateMessage').textContent = `다운로드 실패: ${res.error}`;
+        action.textContent = '다시 시도';
+        action.disabled = false;
+        action.dataset.state = 'download';
+    }
 });
 
-document.getElementById('btnUpdateInstall').addEventListener('click', () => {
-    window.api.update.install();
+document.getElementById('btnUpdateDismiss').addEventListener('click', () => {
+    document.getElementById('updateBanner').style.display = 'none';
 });
+
+async function autoCheckUpdate() {
+    const res = await window.api.update.check();
+    if (res.hasUpdate) showUpdateBanner(res.version, res.changelog);
+}
 
 // ===== Naver Account Management =====
 async function loadNaverAccounts() {
@@ -846,6 +1005,7 @@ window.api.adb.onInstallDone((data) => {
 
 // ===== Init =====
 loadVersion();
+autoCheckUpdate();
 loadDashboard();
 loadSettings();
 loadDraftStatus();

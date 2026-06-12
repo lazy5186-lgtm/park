@@ -2,22 +2,24 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
-const { autoUpdater } = require('electron-updater');
+const { Updater } = require('./updater');
+const { autoUpdater } = require('electron-updater'); // v1.4.1 마이그레이션용 — v1.4.2에서 제거 예정
 
 // Windows 콘솔 인코딩을 UTF-8로 설정 (한글 깨짐 방지)
 if (process.platform === 'win32') {
     try { execSync('chcp 65001', { stdio: 'ignore' }); } catch (e) {}
 }
-const { loadConfig, saveConfig, loadKeywords, resetKeywords, removeKeyword, saveCustomKeywords, loadHistory,
+const { loadConfig, saveConfig, loadKeywords, resetKeywords, resetKeywordPool, removeKeyword, saveCustomKeywords, loadHistory,
     loadNaverAccounts, addNaverAccount, removeNaverAccount, selectNaverAccount,
     getNaverAccountCookieStatus, saveNaverCookies, loadNaverCookies,
     listProfiles, getActiveProfileId, setActiveProfileId,
     loadProfilePrompts, saveProfilePrompt, createProfile, renameProfile, deleteProfile,
-    seedProfilesIfNeeded, MAX_PROFILES } = require('./config-manager');
+    seedProfilesIfNeeded, MAX_PROFILES, migrateGlobalKeywordsIfNeeded } = require('./config-manager');
 const { runScript, stopProcess, isRunning } = require('./process-runner');
 const { getPublicIP } = require('./ip-checker');
 const ipChanger = require('./ip-changer');
 const adbInstaller = require('./adb-installer');
+const adbHelper = require('./adb-helper');
 
 const os = require('os');
 
@@ -49,6 +51,7 @@ function findChromePath() {
 }
 
 let mainWindow = null;
+let updater = null;
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -69,8 +72,13 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+    // 업데이트 시스템 초기화 (IPC 핸들러가 참조하므로 가장 먼저)
+    updater = new Updater();
+
     // 첫 실행 시 번들된 프롬프트 프로필을 사용자 데이터로 시드
     try { seedProfilesIfNeeded(); } catch (e) { console.error('프로필 시드 실패:', e.message); }
+    // 구 전역 키워드(custom/removed/used/history)를 첫 프로필로 1회 이전 (프로필별 키워드 전환용)
+    try { migrateGlobalKeywordsIfNeeded(); } catch (e) { console.error('키워드 마이그레이션 실패:', e.message); }
 
     createWindow();
 
@@ -91,34 +99,21 @@ app.whenReady().then(async () => {
         }
     }
 
-    // 자동 업데이트 체크
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
-
-    autoUpdater.on('update-available', (info) => {
-        console.log('업데이트 발견:', info.version);
-        mainWindow?.webContents.send('update:available', { version: info.version });
+    // 자동 업데이트 체크 (서버 꺼져있으면 무시)
+    updater.checkUpdate(app.getVersion()).then(res => {
+        if (res.hasUpdate) {
+            mainWindow?.webContents.send('update:available', { version: res.version, changelog: res.changelog });
+        }
     });
 
-    autoUpdater.on('download-progress', (progress) => {
-        mainWindow?.webContents.send('update:progress', { percent: Math.round(progress.percent) });
-    });
-
-    autoUpdater.on('update-downloaded', (info) => {
-        console.log('업데이트 다운로드 완료:', info.version);
-        mainWindow?.webContents.send('update:downloaded', { version: info.version });
-    });
-
-    autoUpdater.on('update-not-available', () => {
-        mainWindow?.webContents.send('update:notAvailable');
-    });
-
-    autoUpdater.on('error', (err) => {
-        console.log('업데이트 체크 오류:', err.message);
-        mainWindow?.webContents.send('update:error', { message: err.message });
-    });
-
-    autoUpdater.checkForUpdatesAndNotify();
+    // [v1.4.1 마이그레이션] electron-updater (GitHub Release) 병행 — 구버전 사용자가 v1.4.1 받게 하기 위함.
+    // v1.4.2에서 이 블록과 import, 의존성, publish 설정 모두 제거 예정.
+    try {
+        autoUpdater.autoDownload = true;
+        autoUpdater.autoInstallOnAppQuit = true;
+        autoUpdater.on('error', (err) => console.log('[electron-updater] 오류:', err.message));
+        autoUpdater.checkForUpdatesAndNotify().catch(e => console.log('[electron-updater] 체크 실패:', e.message));
+    } catch (e) { console.log('[electron-updater] 비활성:', e.message); }
 });
 
 app.on('window-all-closed', () => {
@@ -134,15 +129,27 @@ ipcMain.handle('app:version', () => {
 
 ipcMain.handle('update:check', async () => {
     try {
-        const result = await autoUpdater.checkForUpdates();
-        return { checking: true };
+        const result = await updater.checkUpdate(app.getVersion());
+        return result;
     } catch (e) {
-        return { error: e.message };
+        return { hasUpdate: false, error: e.message };
     }
 });
 
-ipcMain.handle('update:install', () => {
-    autoUpdater.quitAndInstall();
+ipcMain.handle('update:download', async (event) => {
+    try {
+        const result = await updater.downloadUpdate(app.getAppPath(), (current, total, file) => {
+            event.sender.send('update:progress', { current, total, file });
+        });
+        return { success: true, ...result };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('update:restart', () => {
+    app.relaunch();
+    app.exit(0);
 });
 
 ipcMain.handle('config:load', () => {
@@ -355,6 +362,11 @@ ipcMain.handle('keywords:reset', () => {
     return { success: true };
 });
 
+ipcMain.handle('keywords:resetPool', () => {
+    resetKeywordPool();
+    return { success: true };
+});
+
 ipcMain.handle('keywords:addCustom', (_event, keywords) => {
     const merged = saveCustomKeywords(keywords);
     return { success: true, count: merged.length };
@@ -465,6 +477,57 @@ ipcMain.handle('ip:change', async (event, interfaceName) => {
         });
         return { success: true, ip: newIp };
     } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+// ---- USB 테더링 ON/OFF ----
+// 연결된 기본 ADB 기기(status === 'device')를 찾아 반환
+async function findActiveAdbDevice() {
+    const available = await adbHelper.isAdbAvailable();
+    if (!available) throw new Error('ADB를 찾을 수 없습니다. 설정에서 ADB를 설치하세요.');
+    const devices = await adbHelper.getConnectedDevices();
+    const device = devices.find(d => d.status === 'device');
+    if (!device) {
+        if (devices.find(d => d.status === 'unauthorized')) {
+            throw new Error('USB 디버깅 권한을 폰에서 허용하세요 (폰 화면 확인).');
+        }
+        throw new Error('연결된 ADB 기기가 없습니다. USB 디버깅을 켜고 폰을 연결하세요.');
+    }
+    return device;
+}
+
+ipcMain.handle('ip:tetherStatus', async () => {
+    try {
+        const device = await findActiveAdbDevice();
+        const status = await adbHelper.getTetherStatus(device.serial);
+        return { available: true, on: status.on, serial: device.serial };
+    } catch (e) {
+        return { available: false, on: false, error: e.message };
+    }
+});
+
+ipcMain.handle('ip:tether', async (event, enable) => {
+    const sender = event.sender;
+    try {
+        const device = await findActiveAdbDevice();
+        sender.send('ip:log', { type: 'info', data: `[테더링] ${enable ? 'ON' : 'OFF'} 요청 (${device.serial})...\n` });
+        await adbHelper.setUsbTethering(device.serial, enable, (msg) => {
+            sender.send('ip:log', { type: 'info', data: `${msg}\n` });
+        });
+        // svc usb setFunctions 는 USB 기능을 재협상하므로 ADB가 잠깐 끊길 수 있음 → 잠시 대기 후 상태 재확인
+        await new Promise(r => setTimeout(r, 2000));
+        let on = enable;
+        try {
+            const status = await adbHelper.getTetherStatus(device.serial);
+            on = status.on;
+        } catch (e) {
+            // 연결이 잠깐 끊긴 상태 — 요청값을 그대로 사용
+        }
+        sender.send('ip:log', { type: 'info', data: `[테더링] 완료: ${on ? 'ON' : 'OFF'}\n` });
+        return { success: true, on };
+    } catch (e) {
+        sender.send('ip:log', { type: 'error', data: `[테더링] 오류: ${e.message}\n` });
         return { success: false, error: e.message };
     }
 });
